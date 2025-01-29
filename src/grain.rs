@@ -16,6 +16,8 @@ pub struct Granulizer {
     grains: Vec<Grain>,
     params: GranulizerParams,
     param_rcvr: Receiver<GranulizerParams>,
+    gate: bool,
+    gate_rcvr: Receiver<bool>,
     delay: DelayLine,
     sr: u32,
 }
@@ -83,13 +85,15 @@ pub fn window(n: usize, t: usize) -> f32 {
 }
 
 impl Granulizer {
-    pub fn new(path: &str, param_rcvr: Receiver<GranulizerParams>) -> Self {
+    pub fn new(path: &str, param_rcvr: Receiver<GranulizerParams>, gate_rcvr: Receiver<bool>) -> Self {
         Self {
             path: PathBuf::from(path),
             samples: vec![],
             grains: (0..4).map(|_| Grain::new()).collect(), // Init with 4 grains
             params: Default::default(),
             param_rcvr,
+            gate: false,
+            gate_rcvr,
             delay: DelayLine::new(44000, 44000 * 3),
             sr: 0,
         }
@@ -127,6 +131,14 @@ impl Granulizer {
             }
             println!("Granny received her params: \n{:?}", self.params);
         }
+        if let Ok(true) = self.gate_rcvr.try_recv() {
+            self.gate = !self.gate;
+            if self.gate {
+                println!("Gate on");
+            } else {
+                println!("Gate off")
+            }
+        }
     }
 
     pub fn buffer_size(&self) -> usize {
@@ -140,14 +152,17 @@ impl Iterator for Granulizer {
     fn next(&mut self) -> Option<Self::Item> {
         self.update_params();
 
+        // Keep delay moving even when gate is not pressed
         let mut dry_sample = 0_f32;
-        for grain in &mut self.grains {
-            let read_pos = grain.params.start + grain.t;
-            let out = self.samples[read_pos].mono() * window(grain.params.length, grain.t);
-            grain.t = (grain.t + 1) % grain.params.length;
-            dry_sample += out;
-        }
         let wet = self.delay.read();
+        if self.gate {
+            for grain in &mut self.grains {
+                let read_pos = grain.params.start + grain.t;
+                let out = self.samples[read_pos].mono() * window(grain.params.length, grain.t);
+                grain.t = (grain.t + 1) % grain.params.length;
+                dry_sample += out;
+            }
+        }
         self.delay
             .write((dry_sample / self.grains.len() as f32) + (wet * 0.85)); // 75% Feedback
         self.delay.advance();

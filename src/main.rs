@@ -9,10 +9,13 @@ use rand::random;
 use rodio::{OutputStream, Sink};
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Sender};
+use floem::event::{Event, EventListener};
+use floem::keyboard::Key;
+use floem::keyboard::NamedKey::Space;
 
 // In future could split components to own function, where I can then do the clone of sender,
 // and then call all of them in an app "main" function
-fn app(sender: Sender<GranulizerParams>, len: usize) -> impl IntoView {
+fn app(sender: Sender<GranulizerParams>, gate: Sender<bool>, len: usize) -> impl IntoView {
     // let start = RwSignal::new(0.0.pct());
     // let length = RwSignal::new(0.5.pct());
 
@@ -25,7 +28,7 @@ fn app(sender: Sender<GranulizerParams>, len: usize) -> impl IntoView {
     // let length_send = sender.clone();
     let file_send = sender.clone();
 
-    h_stack((
+    let view = h_stack((
         button("Randomise").action(move || {
             let grain_count = (random::<f32>() * 7.0) as usize + 1;
             let grain_params = (0..grain_count).map(|_| GrainParams::random(len)).collect();
@@ -68,13 +71,21 @@ fn app(sender: Sender<GranulizerParams>, len: usize) -> impl IntoView {
             //     length_send.send(new_params).expect("Failed to send params");
             // }),
         )),
-    ))
+    ));
+    view.on_event_stop(EventListener::KeyDown, move |e| {
+        if let Event::KeyDown(e) = e {
+            if e.key.logical_key == Key::Named(Space) {
+                gate.send(true).expect("Failed to send Gate");
+            }
+        }
+    })
 }
 
 fn main() {
-    let (sender, receiver) = channel();
+    let (param_send, param_receive) = channel();
+    let (gate_send, gate_receive) = channel();
 
-    let mut granny = Granulizer::new("juno.wav", receiver);
+    let mut granny = Granulizer::new("juno.wav", param_receive, gate_receive);
     granny.init();
     let sample_len = granny.buffer_size();
 
@@ -83,7 +94,7 @@ fn main() {
 
     sink.append(granny);
 
-    floem::launch(move || app(sender, sample_len));
+    floem::launch(move || app(param_send, gate_send, sample_len));
 
     sink.sleep_until_end();
 }
