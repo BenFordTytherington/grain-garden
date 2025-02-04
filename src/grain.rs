@@ -1,4 +1,4 @@
-use crate::delay::DelayLine;
+use crate::delay::StereoDelay;
 use crate::dsp::Frame;
 use rand::random;
 use rodio::{Decoder, Source};
@@ -18,83 +18,111 @@ pub struct Granulizer {
     param_rcvr: Receiver<GranulizerParams>,
     gate: bool,
     gate_rcvr: Receiver<bool>,
-    delay: DelayLine,
+    delay: StereoDelay,
     sr: u32,
 }
 
 #[derive(Debug)]
 pub struct Grain {
     t: usize,
-    params: GrainParams,
-}
-
-#[derive(Debug, Clone)]
-pub struct GrainParams {
-    pub length: usize,
-    pub start: usize,
+    length: usize,
+    start: usize,
+    finished: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct GranulizerParams {
     pub grain_count: usize,
+    pub grain_length: usize,
     pub grain_spread: f32,
-    pub grain_params: Option<Vec<GrainParams>>,
+    pub start: usize,
     pub file: PathBuf,
-}
-
-impl Default for GrainParams {
-    fn default() -> Self {
-        Self {
-            length: 44000,
-            start: 0,
-        }
-    }
 }
 
 impl Default for GranulizerParams {
     fn default() -> Self {
         Self {
-            grain_count: 1,
+            grain_count: 64,
+            grain_length: 44000,
             grain_spread: 0.0,
-            grain_params: Some(vec![GrainParams::default()]),
-            file: PathBuf::from("juno.wav"),
+            start: 0,
+            file: PathBuf::from("chopin.wav"),
         }
     }
 }
 
 impl Grain {
-    pub fn new() -> Self {
+    pub fn new(length: usize, start: usize) -> Self {
         Self {
             t: 0,
-            params: Default::default(),
+            length,
+            start,
+            finished: false,
         }
+    }
+
+    pub fn reinit(&mut self, length: usize, start: usize) {
+        println!("Reinit a grain with: \n   l: {:?}, s: {:?}", length, start);
+        self.t = 0;
+        self.finished = false;
+        self.start = start;
+        self.length = length;
     }
 }
 
-impl GrainParams {
-    pub fn random(len: usize) -> Self {
+impl Default for Grain {
+    fn default() -> Self {
         Self {
-            length: (random::<f32>() * 87000.0) as usize + 1000,
-            start: (random::<f32>() * (len - 88000) as f32) as usize,
+            t: 0,
+            length: 44000,
+            start: 0,
+            finished: false,
         }
     }
 }
 
 pub fn window(n: usize, t: usize) -> f32 {
-    0.75 - 0.25 * (2.0 * PI * t as f32 / n as f32).cos()
+    0.5 - 0.5 * (2.0 * PI * t as f32 / n as f32).cos()
+}
+
+// linear Envelope with t from 0 to 1
+pub fn ad(t: f32, m: f32) -> f32 {
+    if t <= m {
+        t / m
+    } else {
+        (t - 1.0) / (m - 1.0)
+    }
+}
+
+pub fn exp(t: f32, m: f32, c1: f32, c2: f32) -> f32 {
+    if t <= m {
+        ((-c1 * t).exp() - 1.0) / ((-c1 * m).exp() - 1.0)
+    } else {
+        ((c2 * (t - 1.0)).exp() - 1.0) / ((c2 * (m - 1.0)).exp() - 1.0)
+    }
+}
+
+pub fn env(n: usize, t: usize, m: f32) -> f32 {
+    let t_norm = t as f32 / n as f32;
+    // ad(t_norm, m)
+    exp(t_norm, m, 25.0, -6.0)
 }
 
 impl Granulizer {
-    pub fn new(path: &str, param_rcvr: Receiver<GranulizerParams>, gate_rcvr: Receiver<bool>) -> Self {
+    pub fn new(
+        path: &str,
+        param_rcvr: Receiver<GranulizerParams>,
+        gate_rcvr: Receiver<bool>,
+    ) -> Self {
         Self {
             path: PathBuf::from(path),
             samples: vec![],
-            grains: (0..4).map(|_| Grain::new()).collect(), // Init with 4 grains
+            grains: (0..32).map(|_| Grain::default()).collect(), // Init with 64 grains
             params: Default::default(),
             param_rcvr,
             gate: false,
             gate_rcvr,
-            delay: DelayLine::new(44000, 44000 * 3),
+            delay: StereoDelay::new(1.45625, 0.53312, 44000, 0.5, 0.4),
             sr: 0,
         }
     }
@@ -106,10 +134,7 @@ impl Granulizer {
         let decoder = Decoder::new_wav(reader).expect("Couldn't created decoder for file");
 
         self.sr = decoder.sample_rate();
-        self.samples = decoder
-            .convert_samples()
-            .map(Frame::new)
-            .collect();
+        self.samples = decoder.convert_samples().map(Frame::new).collect();
     }
 
     pub fn update_params(&mut self) {
@@ -120,15 +145,6 @@ impl Granulizer {
                 println!("Initialised with new file");
             }
             self.params = params;
-            // better way to do this without clone?
-            if let Some(grain_params) = &self.params.grain_params {
-                if grain_params.len() != self.grains.len() {
-                    self.grains.resize_with(grain_params.len(), Grain::new);
-                }
-                for (index, params) in grain_params.iter().enumerate() {
-                    self.grains[index].params = params.clone();
-                }
-            }
             println!("Granny received her params: \n{:?}", self.params);
         }
         if let Ok(true) = self.gate_rcvr.try_recv() {
@@ -154,19 +170,26 @@ impl Iterator for Granulizer {
 
         // Keep delay moving even when gate is not pressed
         let mut dry_sample = 0_f32;
-        let wet = self.delay.read();
         if self.gate {
             for grain in &mut self.grains {
-                let read_pos = grain.params.start + grain.t;
-                let out = self.samples[read_pos].mono() * window(grain.params.length, grain.t);
-                grain.t = (grain.t + 1) % grain.params.length;
+                // Respawn grain
+                if grain.finished {
+                    let start_rand = (random::<f32>() * 2000.0) as usize;
+                    grain.reinit(self.params.grain_length, self.params.start + start_rand)
+                }
+                let read_pos = grain.start + grain.t;
+                let out = self.samples[read_pos % self.samples.len()].mono()
+                    // * window(grain.length, grain.t);
+                    * env(grain.length, grain.t, 0.2);
+                grain.t += 1;
+                if grain.t == grain.length {
+                    grain.finished = true;
+                }
                 dry_sample += out;
             }
         }
-        self.delay
-            .write((dry_sample / self.grains.len() as f32) + (wet * 0.85)); // 75% Feedback
-        self.delay.advance();
-        Some((wet + dry_sample) * 0.5) // 50% mix
+        let out = self.delay.process(dry_sample / self.grains.len() as f32);
+        Some(out)
     }
 }
 

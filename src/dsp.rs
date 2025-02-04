@@ -1,5 +1,5 @@
 #[derive(Debug, Clone)]
-pub struct Frame(f32, f32);
+pub struct Frame(pub f32, pub f32);
 
 impl Frame {
     pub fn new(sample: f32) -> Self {
