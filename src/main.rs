@@ -20,6 +20,7 @@ fn app(sender: Sender<GranulizerParams>, gate: Sender<bool>, len: usize) -> impl
     let start = RwSignal::new(0.0.pct());
     let length = RwSignal::new(0.5.pct());
     let spread = RwSignal::new(0.5.pct());
+    let scan = RwSignal::new(false);
 
     let params = RwSignal::new(GranulizerParams::default());
 
@@ -34,30 +35,24 @@ fn app(sender: Sender<GranulizerParams>, gate: Sender<bool>, len: usize) -> impl
     let spread_send = sender.clone();
 
     let view = (
-        button("Randomise").action(move || {
-            let grain_count = (random::<f32>() * 31.0) as usize + 1;
-            let start = (random::<f32>() * len as f32) as usize;
-            let grain_length = (random::<f32>() * 88000.0) as usize;
-            let new_params = GranulizerParams {
-                grain_count,
-                grain_length,
-                grain_spread: random::<f32>(),
-                start,
-                file: PathBuf::from("handpan.wav"),
-            };
+        button("Scan").action(move || {
+            let mut new_params = params.get();
+            let current = scan.get();
+            new_params.scan = Some(!current);
+            scan.set(!current);
             params.set(new_params.clone()); // Could be a better way to set this
             button_send.send(new_params).expect("Failed to send params");
         }).style(|s| s.width(100)),
         h_stack((
             button("-").action(move || {
                 let mut new_params = params.get();
-                new_params.grain_count -= 1;
+                new_params.grain_density -= (new_params.grain_length as f32 / 64.0) as usize;
                 params.set(new_params.clone());
                 grain_down_send.send(new_params).expect("Failed to send params");
             }),
             button("+").action(move || {
                 let mut new_params = params.get();
-                new_params.grain_count += 1;
+                new_params.grain_density += (new_params.grain_length as f32 / 64.0) as usize;
                 params.set(new_params.clone());
                 grain_up_send.send(new_params).expect("Failed to send params");
             }),

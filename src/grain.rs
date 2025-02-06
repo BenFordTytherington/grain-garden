@@ -20,6 +20,8 @@ pub struct Granulizer {
     gate_rcvr: Receiver<bool>,
     delay: StereoDelay,
     sr: u32,
+    spawn_timer: usize,
+    scan: bool,
 }
 
 #[derive(Debug)]
@@ -32,20 +34,22 @@ pub struct Grain {
 
 #[derive(Debug, Clone)]
 pub struct GranulizerParams {
-    pub grain_count: usize,
+    pub grain_density: usize,
     pub grain_length: usize,
     pub grain_spread: f32,
     pub start: usize,
+    pub scan: Option<bool>,
     pub file: PathBuf,
 }
 
 impl Default for GranulizerParams {
     fn default() -> Self {
         Self {
-            grain_count: 2,
+            grain_density: 44000,
             grain_length: 44000,
             grain_spread: 0.0,
             start: 0,
+            scan: None,
             file: PathBuf::from("handpan.wav"),
         }
     }
@@ -126,8 +130,10 @@ impl Granulizer {
             param_rcvr,
             gate: false,
             gate_rcvr,
-            delay: StereoDelay::new(2.45625, 1.53312, 44000, 0.7, 0.0),
+            delay: StereoDelay::new(2.45625, 1.53312, 44000, 0.2, 0.0),
             sr: 0,
+            spawn_timer: 44000,
+            scan: false
         }
     }
 
@@ -136,9 +142,6 @@ impl Granulizer {
     pub fn init(&mut self) {
         let reader = BufReader::new(File::open(&self.path).expect("Unknown file"));
         let decoder = Decoder::new_wav(reader).expect("Couldn't created decoder for file");
-
-        // Randomly place grain start times so they don't overlap as much
-        self.grains = (0..64).map(|_| Grain::with_rand_start(self.params.start, 44000)).collect();
 
         self.sr = decoder.sample_rate();
         self.samples = decoder.convert_samples().map(Frame::new).collect();
@@ -150,6 +153,10 @@ impl Granulizer {
                 self.path = params.file.clone();
                 self.init();
                 println!("Initialised with new file");
+            }
+            // Enable or disable scanning
+            if let Some(scan) = params.scan {
+                self.scan = scan;
             }
             self.params = params;
             println!("Granny received her params: \n{:?}", self.params);
@@ -177,25 +184,39 @@ impl Iterator for Granulizer {
 
         // Keep delay moving even when gate is not pressed
         let mut dry_sample = 0_f32;
+
+        // Remove finished grains
+        self.grains.retain(|grain| !grain.finished);
+        // Spawn new grains if Gate is pressed
         if self.gate {
-            for grain in &mut self.grains.iter_mut().take(self.params.grain_count) {
-                // Respawn grain
-                if grain.finished {
-                    let rand = (random::<f32>() * self.params.grain_length as f32 * self.params.grain_spread) as usize;
-                    grain.reinit(self.params.grain_length, self.params.start + rand);
-                }
-                let read_pos = grain.start + grain.t;
-                let out = self.samples[read_pos % self.samples.len()].mono()
-                    // * window(grain.length, grain.t);
-                    * env(grain.length, grain.t, 0.2);
-                grain.t += 1;
-                if grain.t == grain.length {
-                    grain.finished = true;
-                }
-                dry_sample += out;
+            if self.spawn_timer <= 0 {
+                let rand = (random::<f32>() * self.params.grain_length as f32 * 2.0 * self.params.grain_spread) as usize;
+                self.grains.push(Grain::new(self.params.grain_length, self.params.start + rand));
+                println!("Spawned a new grain!");
+                self.spawn_timer = self.params.grain_density;
+            }
+            // Decrease timer
+            self.spawn_timer -= 1;
+            if self.scan {
+                self.params.start += 1;
             }
         }
-        let out = self.delay.process(dry_sample / self.params.grain_count as f32);
+        // Read grains
+        let fract = self.grains.len() as f32;
+        for grain in &mut self.grains {
+            let read_pos = grain.start + grain.t;
+            let out = self.samples[read_pos % self.samples.len()].mono()
+                * window(grain.length, grain.t);
+                // * env(grain.length, grain.t, 0.2);
+            grain.t += 1;
+            if grain.t == grain.length {
+                grain.finished = true;
+            }
+            dry_sample += out / fract;
+        }
+
+
+        let out = self.delay.process(dry_sample);
         Some(out)
     }
 }
