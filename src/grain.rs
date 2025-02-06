@@ -42,11 +42,11 @@ pub struct GranulizerParams {
 impl Default for GranulizerParams {
     fn default() -> Self {
         Self {
-            grain_count: 64,
+            grain_count: 2,
             grain_length: 44000,
             grain_spread: 0.0,
             start: 0,
-            file: PathBuf::from("chopin.wav"),
+            file: PathBuf::from("handpan.wav"),
         }
     }
 }
@@ -62,11 +62,15 @@ impl Grain {
     }
 
     pub fn reinit(&mut self, length: usize, start: usize) {
-        println!("Reinit a grain with: \n   l: {:?}, s: {:?}", length, start);
         self.t = 0;
         self.finished = false;
         self.start = start;
         self.length = length;
+    }
+
+    pub fn with_rand_start(start: usize, length: usize) -> Self {
+        let rand = (random::<f32>() * length as f32) as usize;
+        Self::new(length, start + rand)
     }
 }
 
@@ -105,7 +109,7 @@ pub fn exp(t: f32, m: f32, c1: f32, c2: f32) -> f32 {
 pub fn env(n: usize, t: usize, m: f32) -> f32 {
     let t_norm = t as f32 / n as f32;
     // ad(t_norm, m)
-    exp(t_norm, m, 25.0, -6.0)
+    exp(t_norm, m, -25.0, -6.0)
 }
 
 impl Granulizer {
@@ -117,12 +121,12 @@ impl Granulizer {
         Self {
             path: PathBuf::from(path),
             samples: vec![],
-            grains: (0..32).map(|_| Grain::default()).collect(), // Init with 64 grains
+            grains: Vec::with_capacity(64), // Init with 64 grains
             params: Default::default(),
             param_rcvr,
             gate: false,
             gate_rcvr,
-            delay: StereoDelay::new(1.45625, 0.53312, 44000, 0.5, 0.4),
+            delay: StereoDelay::new(2.45625, 1.53312, 44000, 0.7, 0.0),
             sr: 0,
         }
     }
@@ -132,6 +136,9 @@ impl Granulizer {
     pub fn init(&mut self) {
         let reader = BufReader::new(File::open(&self.path).expect("Unknown file"));
         let decoder = Decoder::new_wav(reader).expect("Couldn't created decoder for file");
+
+        // Randomly place grain start times so they don't overlap as much
+        self.grains = (0..64).map(|_| Grain::with_rand_start(self.params.start, 44000)).collect();
 
         self.sr = decoder.sample_rate();
         self.samples = decoder.convert_samples().map(Frame::new).collect();
@@ -171,11 +178,11 @@ impl Iterator for Granulizer {
         // Keep delay moving even when gate is not pressed
         let mut dry_sample = 0_f32;
         if self.gate {
-            for grain in &mut self.grains {
+            for grain in &mut self.grains.iter_mut().take(self.params.grain_count) {
                 // Respawn grain
                 if grain.finished {
-                    let start_rand = (random::<f32>() * 2000.0) as usize;
-                    grain.reinit(self.params.grain_length, self.params.start + start_rand)
+                    let rand = (random::<f32>() * self.params.grain_length as f32 * self.params.grain_spread) as usize;
+                    grain.reinit(self.params.grain_length, self.params.start + rand);
                 }
                 let read_pos = grain.start + grain.t;
                 let out = self.samples[read_pos % self.samples.len()].mono()
@@ -188,7 +195,7 @@ impl Iterator for Granulizer {
                 dry_sample += out;
             }
         }
-        let out = self.delay.process(dry_sample / self.grains.len() as f32);
+        let out = self.delay.process(dry_sample / self.params.grain_count as f32);
         Some(out)
     }
 }

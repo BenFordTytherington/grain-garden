@@ -19,15 +19,19 @@ use std::sync::mpsc::{channel, Sender};
 fn app(sender: Sender<GranulizerParams>, gate: Sender<bool>, len: usize) -> impl IntoView {
     let start = RwSignal::new(0.0.pct());
     let length = RwSignal::new(0.5.pct());
+    let spread = RwSignal::new(0.5.pct());
 
     let params = RwSignal::new(GranulizerParams::default());
 
-    let filename = RwSignal::new("chopin.wav");
+    let filename = RwSignal::new("handpan.wav");
 
     let button_send = sender.clone();
     let start_send = sender.clone();
     let length_send = sender.clone();
     let file_send = sender.clone();
+    let grain_up_send = sender.clone();
+    let grain_down_send = sender.clone();
+    let spread_send = sender.clone();
 
     let view = (
         button("Randomise").action(move || {
@@ -39,11 +43,25 @@ fn app(sender: Sender<GranulizerParams>, gate: Sender<bool>, len: usize) -> impl
                 grain_length,
                 grain_spread: random::<f32>(),
                 start,
-                file: PathBuf::from("chopin.wav"),
+                file: PathBuf::from("handpan.wav"),
             };
             params.set(new_params.clone()); // Could be a better way to set this
             button_send.send(new_params).expect("Failed to send params");
         }).style(|s| s.width(100)),
+        h_stack((
+            button("-").action(move || {
+                let mut new_params = params.get();
+                new_params.grain_count -= 1;
+                params.set(new_params.clone());
+                grain_down_send.send(new_params).expect("Failed to send params");
+            }),
+            button("+").action(move || {
+                let mut new_params = params.get();
+                new_params.grain_count += 1;
+                params.set(new_params.clone());
+                grain_up_send.send(new_params).expect("Failed to send params");
+            }),
+        )),
         Dropdown::custom(
             move || filename.get(),
             |main_item| text(main_item).into_any(),
@@ -71,6 +89,14 @@ fn app(sender: Sender<GranulizerParams>, gate: Sender<bool>, len: usize) -> impl
             length.set(value);
             params.set(new_params.clone());
             length_send.send(new_params).expect("Failed to send params");
+        }).style(|s| s.width_full()),
+        "Spread",
+        Slider::new(move || spread.get()).on_change_pct(move |value| {
+            let mut new_params = params.get();
+            new_params.grain_spread = value.0 as f32 / 100.0;
+            spread.set(value);
+            params.set(new_params.clone());
+            spread_send.send(new_params).expect("Failed to send params");
         }).style(|s| s.width_full())
     ).style(|s| s.flex_col().gap(6).items_center().width_full());
 
@@ -87,7 +113,7 @@ fn main() {
     let (param_send, param_receive) = channel();
     let (gate_send, gate_receive) = channel();
 
-    let mut granny = Granulizer::new("chopin.wav", param_receive, gate_receive);
+    let mut granny = Granulizer::new("handpan.wav", param_receive, gate_receive);
     granny.init();
     let sample_len = granny.buffer_size();
 
