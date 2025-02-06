@@ -133,7 +133,7 @@ impl Granulizer {
             delay: StereoDelay::new(2.45625, 1.53312, 44000, 0.2, 0.0),
             sr: 0,
             spawn_timer: 44000,
-            scan: false
+            scan: false,
         }
     }
 
@@ -189,10 +189,15 @@ impl Iterator for Granulizer {
         self.grains.retain(|grain| !grain.finished);
         // Spawn new grains if Gate is pressed
         if self.gate {
-            if self.spawn_timer <= 0 {
-                let rand = (random::<f32>() * self.params.grain_length as f32 * 2.0 * self.params.grain_spread) as usize;
-                self.grains.push(Grain::new(self.params.grain_length, self.params.start + rand));
-                println!("Spawned a new grain!");
+            if self.spawn_timer == 0 {
+                let rand = (random::<f32>()
+                    * self.params.grain_length as f32
+                    * 2.0
+                    * self.params.grain_spread) as usize;
+                self.grains.push(Grain::new(
+                    self.params.grain_length,
+                    self.params.start + rand,
+                ));
                 self.spawn_timer = self.params.grain_density;
             }
             // Decrease timer
@@ -205,16 +210,15 @@ impl Iterator for Granulizer {
         let fract = self.grains.len() as f32;
         for grain in &mut self.grains {
             let read_pos = grain.start + grain.t;
-            let out = self.samples[read_pos % self.samples.len()].mono()
-                * window(grain.length, grain.t);
-                // * env(grain.length, grain.t, 0.2);
+            let out =
+                self.samples[read_pos % self.samples.len()].mono() * window(grain.length, grain.t);
+            // * env(grain.length, grain.t, 0.2);
             grain.t += 1;
             if grain.t == grain.length {
                 grain.finished = true;
             }
             dry_sample += out / fract;
         }
-
 
         let out = self.delay.process(dry_sample);
         Some(out)

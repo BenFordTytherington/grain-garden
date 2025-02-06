@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-floem = "0.2.0"
+eframe = "0.31.0"
+egui = "0.31.0"
 rand = "0.9.0"
 rodio = "0.20.1"
