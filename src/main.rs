@@ -1,7 +1,9 @@
 mod delay;
 mod dsp;
 mod grain;
+mod lsystem;
 
+use std::collections::HashMap;
 use crate::grain::{Granulizer, GranulizerParams};
 use floem::event::{Event, EventListener};
 use floem::keyboard::Key;
@@ -13,6 +15,7 @@ use rand::random;
 use rodio::{OutputStream, Sink};
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Sender};
+use crate::lsystem::LSystem;
 
 // In future could split components to own function, where I can then do the clone of sender,
 // and then call all of them in an app "main" function
@@ -115,9 +118,21 @@ fn main() {
     let (_stream, stream_handle) = OutputStream::try_default().unwrap();
     let sink = Sink::try_new(&stream_handle).unwrap();
 
-    sink.append(granny);
+    // sink.append(granny);
+    //
+    // floem::launch(move || app(param_send, gate_send, sample_len));
+    //
+    // sink.sleep_until_end();
 
-    floem::launch(move || app(param_send, gate_send, sample_len));
+    let mut rules = HashMap::new();
+    rules.insert('1', "11".to_string());
+    rules.insert('0', "1[0]0".to_string());
 
-    sink.sleep_until_end();
+    let mut system = LSystem {
+        axiom: "0".to_string(),
+        result: "0".to_string(),
+        rules,
+    };
+
+    system.iterate(3);
 }
