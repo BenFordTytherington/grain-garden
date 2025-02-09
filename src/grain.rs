@@ -1,4 +1,4 @@
-use crate::delay::StereoDelay;
+use crate::delay::{DelayParams, StereoDelay};
 use crate::dsp::Frame;
 use rand::random;
 use rodio::{Decoder, Source};
@@ -10,12 +10,12 @@ use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
 #[derive(Debug)]
-pub struct Granulizer {
+pub struct GranularEngine {
     path: PathBuf,
     samples: Vec<Frame>,
     grains: Vec<Grain>,
-    params: GranulizerParams,
-    param_rcvr: Receiver<GranulizerParams>,
+    params: GranularParams,
+    param_rcvr: Receiver<GranularParams>,
     gate: bool,
     gate_rcvr: Receiver<bool>,
     delay: StereoDelay,
@@ -33,7 +33,7 @@ pub struct Grain {
 }
 
 #[derive(Debug, Clone)]
-pub struct GranulizerParams {
+pub struct GranularParams {
     pub grain_density: usize,
     pub grain_length: usize,
     pub grain_spread: f32,
@@ -42,7 +42,7 @@ pub struct GranulizerParams {
     pub file: PathBuf,
 }
 
-impl Default for GranulizerParams {
+impl Default for GranularParams {
     fn default() -> Self {
         Self {
             grain_density: 44000,
@@ -63,18 +63,6 @@ impl Grain {
             start,
             finished: false,
         }
-    }
-
-    pub fn reinit(&mut self, length: usize, start: usize) {
-        self.t = 0;
-        self.finished = false;
-        self.start = start;
-        self.length = length;
-    }
-
-    pub fn with_rand_start(start: usize, length: usize) -> Self {
-        let rand = (random::<f32>() * length as f32) as usize;
-        Self::new(length, start + rand)
     }
 }
 
@@ -103,7 +91,10 @@ pub fn ad(t: f32, m: f32) -> f32 {
 }
 
 pub fn exp(t: f32, m: f32, c1: f32, c2: f32) -> f32 {
-    if t <= m {
+    // Sub in linear envelope if coeffs are too small
+    if (c1.abs() <= 0.01) | (c2.abs() <= 0.01) {
+        ad(t, m)
+    } else if t <= m {
         ((-c1 * t).exp() - 1.0) / ((-c1 * m).exp() - 1.0)
     } else {
         ((c2 * (t - 1.0)).exp() - 1.0) / ((c2 * (m - 1.0)).exp() - 1.0)
@@ -112,15 +103,15 @@ pub fn exp(t: f32, m: f32, c1: f32, c2: f32) -> f32 {
 
 pub fn env(n: usize, t: usize, m: f32) -> f32 {
     let t_norm = t as f32 / n as f32;
-    // ad(t_norm, m)
-    exp(t_norm, m, -25.0, -6.0)
+    exp(t_norm, m, -5.0, -5.0)
 }
 
-impl Granulizer {
+impl GranularEngine {
     pub fn new(
         path: &str,
-        param_rcvr: Receiver<GranulizerParams>,
+        param_rcvr: Receiver<GranularParams>,
         gate_rcvr: Receiver<bool>,
+        delay_rcvr: Receiver<DelayParams>,
     ) -> Self {
         Self {
             path: PathBuf::from(path),
@@ -128,9 +119,9 @@ impl Granulizer {
             grains: Vec::with_capacity(64), // Init with 64 grains
             params: Default::default(),
             param_rcvr,
-            gate: false,
+            gate: true,
             gate_rcvr,
-            delay: StereoDelay::new(2.45625, 1.53312, 44000, 0.2, 0.0),
+            delay: StereoDelay::new(2.45625, 1.53312, 44000, 0.2, 0.0, delay_rcvr),
             sr: 0,
             spawn_timer: 44000,
             scan: false,
@@ -161,13 +152,8 @@ impl Granulizer {
             self.params = params;
             println!("Granny received her params: \n{:?}", self.params);
         }
-        if let Ok(true) = self.gate_rcvr.try_recv() {
-            self.gate = !self.gate;
-            if self.gate {
-                println!("Gate on");
-            } else {
-                println!("Gate off")
-            }
+        if let Ok(gate) = self.gate_rcvr.try_recv() {
+            self.gate = gate;
         }
     }
 
@@ -176,7 +162,7 @@ impl Granulizer {
     }
 }
 
-impl Iterator for Granulizer {
+impl Iterator for GranularEngine {
     type Item = f32;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -210,14 +196,14 @@ impl Iterator for Granulizer {
         let fract = self.grains.len() as f32;
         for grain in &mut self.grains {
             let read_pos = grain.start + grain.t;
-            let out =
-                self.samples[read_pos % self.samples.len()].mono() * window(grain.length, grain.t);
-            // * env(grain.length, grain.t, 0.2);
+            let out = self.samples[read_pos % self.samples.len()].mono()
+                * env(grain.length, grain.t, 0.5);
+
             grain.t += 1;
             if grain.t == grain.length {
                 grain.finished = true;
             }
-            dry_sample += out / fract;
+            dry_sample += out / fract.max(1.0);
         }
 
         let out = self.delay.process(dry_sample);
@@ -225,7 +211,7 @@ impl Iterator for Granulizer {
     }
 }
 
-impl Source for Granulizer {
+impl Source for GranularEngine {
     fn current_frame_len(&self) -> Option<usize> {
         Some(self.samples.len())
     }
