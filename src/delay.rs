@@ -5,8 +5,9 @@ use std::sync::mpsc::Receiver;
 pub struct DelayLine {
     buf_size: usize,
     samples: Vec<f32>,
-    read_ptr: usize,
-    time: usize,
+    write_ptr: usize,
+    current_time: f32, // Times can be fractional, for smoother interpolation
+    target_time: f32,
 }
 
 impl DelayLine {
@@ -14,26 +15,45 @@ impl DelayLine {
         Self {
             buf_size,
             samples: vec![0.0; buf_size],
-            read_ptr: 0,
-            time,
+            write_ptr: 0,
+            current_time: time as f32,
+            target_time: time as f32,
         }
     }
 
+    pub fn set_time_smooth(&mut self, time: usize) {
+        self.target_time = time as f32;
+    }
+
     pub fn set_time(&mut self, time: usize) {
-        self.time = time;
+        self.current_time = time as f32;
     }
 
     pub fn write(&mut self, sample: f32) {
-        let write_ptr = (self.read_ptr + self.time) % self.buf_size;
-        self.samples[write_ptr] = sample;
+        self.samples[self.write_ptr] = sample;
     }
 
     pub fn read(&self) -> f32 {
-        self.samples[self.read_ptr]
+        let mut read_ptr = self.write_ptr as f32 - self.current_time;
+        if read_ptr < 0.0 {
+            read_ptr += self.buf_size as f32;
+        }
+        // Interpolate samples
+        let index = read_ptr.floor() as usize % self.buf_size;
+        let first = self.samples[index];
+        let second = self.samples[(index + 1) % self.buf_size];
+        let t = read_ptr.fract();
+        (1.0 - t) * first + t * second
     }
 
     pub fn advance(&mut self) {
-        self.read_ptr = (self.read_ptr + 1) % self.buf_size;
+        // Smoothly interpolate delay times
+        if self.current_time > self.target_time {
+            self.current_time -= 0.5;
+        } else if self.current_time < self.target_time {
+            self.current_time += 0.5;
+        }
+        self.write_ptr = (self.write_ptr + 1) % self.buf_size;
     }
 }
 
@@ -66,7 +86,8 @@ impl StereoDelay {
                 mix,
                 time_l,
                 time_r,
-                bypass: true
+                bypass: true,
+                pitch: false
             },
             params_receiver,
         }
@@ -75,10 +96,17 @@ impl StereoDelay {
     pub fn update_params(&mut self) {
         if let Ok(params) = self.params_receiver.try_recv() {
             self.params = params;
-            self.dl_left
-                .set_time((self.params.time_l * self.sr as f32) as usize);
-            self.dl_right
-                .set_time((self.params.time_r * self.sr as f32) as usize);
+            let l_time = (self.params.time_l * self.sr as f32) as usize;
+            let r_time = (self.params.time_r * self.sr as f32) as usize;
+            if self.params.pitch {
+                self.dl_left
+                    .set_time_smooth(l_time);
+                self.dl_right
+                    .set_time_smooth(r_time);
+            } else {
+                self.dl_left.set_time(l_time);
+                self.dl_right.set_time(r_time);
+            }
         }
     }
 
@@ -113,6 +141,7 @@ pub struct DelayParams {
     pub time_l: f32,
     pub time_r: f32,
     pub bypass: bool,
+    pub pitch: bool,
 }
 
 impl Default for DelayParams {
@@ -122,7 +151,8 @@ impl Default for DelayParams {
             mix: 0.2,
             time_l: 1.0,
             time_r: 2.0,
-            bypass: true
+            bypass: true,
+            pitch: false
         }
     }
 }

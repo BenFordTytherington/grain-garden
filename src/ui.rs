@@ -169,6 +169,11 @@ impl DelayUi {
                 self.sender.send(self.params.clone()).expect("Failed to send params")
             }
 
+            if ui.button("Pitch taps").clicked() {
+                self.params.pitch = !self.params.pitch;
+                self.sender.send(self.params.clone()).expect("Failed to send params")
+            }
+
             if mix.changed()
                 | feedback.changed()
                 | time_l.changed()
