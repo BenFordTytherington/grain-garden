@@ -74,11 +74,11 @@ impl GranularUi {
         ui.heading("Grain Controls");
         ui.vertical_centered(|ui| {
             ui.horizontal(|ui| {
-                let start_slider =
+                let start =
                     egui::Slider::new(&mut self.params.start, 0..=(self.buf_len - 1))
                         .text("Start")
                         .ui(ui);
-                let length_slider = egui::Slider::new(&mut self.params.grain_length, 0..=88000)
+                let length = egui::Slider::new(&mut self.params.grain_length, 0..=88000)
                     .text("Length")
                     .ui(ui);
 
@@ -98,18 +98,22 @@ impl GranularUi {
                         .expect("Failed to send params");
                 }
 
-                if start_slider.changed() | length_slider.changed() {
+                if start.changed() | length.changed() {
                     self.sender
                         .send(self.params.clone())
                         .expect("Failed to send params");
                 }
             });
             ui.horizontal(|ui| {
-                let density_slider = egui::Slider::new(&mut self.params.grain_density, 500..=44000)
+                let density = egui::Slider::new(&mut self.params.grain_density, 2000..=44000)
                     .text("Density")
                     .ui(ui);
-                let spread_slider = egui::Slider::new(&mut self.params.grain_spread, 0.0..=1.0)
+                let spread = egui::Slider::new(&mut self.params.grain_spread, 0.0..=1.0)
                     .text("Spread")
+                    .ui(ui);
+
+                let gain = egui::Slider::new(&mut self.params.gain, 0.0..=2.0)
+                    .text("Gain")
                     .ui(ui);
 
                 if ui.button("Gate").is_pointer_button_down_on() && !self.gate {
@@ -122,7 +126,7 @@ impl GranularUi {
                     println!("Sending gate off");
                 }
 
-                if density_slider.changed() | spread_slider.changed() {
+                if density.changed() | spread.changed() | gain.changed() {
                     self.sender
                         .send(self.params.clone())
                         .expect("Failed to send params");
@@ -147,23 +151,28 @@ impl DelayUi {
 
     pub fn ui(&mut self, ui: &mut Ui) {
         ui.vertical_centered(|ui| {
-            let mix_slider = egui::Slider::new(&mut self.params.mix, 0.0..=1.0)
+            let mix = egui::Slider::new(&mut self.params.mix, 0.0..=1.0)
                 .text("Mix")
                 .ui(ui);
-            let feedback_slider = egui::Slider::new(&mut self.params.feedback, 0.0..=0.999)
+            let feedback = egui::Slider::new(&mut self.params.feedback, 0.0..=0.999)
                 .text("Feedback")
                 .ui(ui);
-            let left_time_slider = egui::Slider::new(&mut self.params.time_l, 0.001..=5.00)
+            let time_l = egui::Slider::new(&mut self.params.time_l, 0.001..=5.00)
                 .text("Left time")
                 .ui(ui);
-            let right_time_slider = egui::Slider::new(&mut self.params.time_r, 0.001..=5.00)
+            let time_r = egui::Slider::new(&mut self.params.time_r, 0.001..=5.00)
                 .text("Right Time")
                 .ui(ui);
 
-            if mix_slider.changed()
-                | feedback_slider.changed()
-                | left_time_slider.changed()
-                | right_time_slider.changed()
+            if ui.button("Bypass").clicked() {
+                self.params.bypass = !self.params.bypass;
+                self.sender.send(self.params.clone()).expect("Failed to send params")
+            }
+
+            if mix.changed()
+                | feedback.changed()
+                | time_l.changed()
+                | time_r.changed()
             {
                 self.sender
                     .send(self.params.clone())

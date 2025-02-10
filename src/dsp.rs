@@ -1,9 +1,9 @@
 use std::ops::AddAssign;
 
-#[derive(Debug, Clone)]
-pub struct Frame(pub f32, pub f32);
+#[derive(Debug, Clone, Copy)]
+pub struct StereoFrame(pub f32, pub f32);
 
-impl Frame {
+impl StereoFrame {
     pub fn new(sample: f32) -> Self {
         Self(sample, sample)
     }
@@ -17,13 +17,13 @@ impl Frame {
     }
 }
 
-impl AddAssign for Frame {
+impl AddAssign for StereoFrame {
     fn add_assign(&mut self, rhs: Self) {
         self.0 += rhs.0;
         self.1 += rhs.1;
     }
 }
 
-pub fn interleave(buf: Vec<Frame>) -> Vec<f32> {
+pub fn interleave(buf: &[StereoFrame]) -> Vec<f32> {
     buf.iter().flat_map(|frame| [frame.0, frame.1]).collect()
 }

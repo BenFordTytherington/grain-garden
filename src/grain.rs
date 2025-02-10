@@ -1,5 +1,5 @@
 use crate::delay::{DelayParams, StereoDelay};
-use crate::dsp::Frame;
+use crate::dsp::StereoFrame;
 use rand::random;
 use rodio::{Decoder, Source};
 use std::f32::consts::PI;
@@ -14,7 +14,7 @@ use std::sync::mpsc::Receiver;
 #[derive(Debug)]
 pub struct GranularEngine {
     path: PathBuf,
-    samples: Vec<Frame>,
+    samples: Vec<StereoFrame>,
     grains: Vec<Grain>,
     params: GranularParams,
     param_rcvr: Receiver<GranularParams>,
@@ -39,6 +39,7 @@ pub struct GranularParams {
     pub grain_density: usize,
     pub grain_length: usize,
     pub grain_spread: f32,
+    pub gain: f32,
     pub start: usize,
     pub scan: Option<bool>,
     pub file: PathBuf,
@@ -50,9 +51,10 @@ impl Default for GranularParams {
             grain_density: 44000,
             grain_length: 44000,
             grain_spread: 0.0,
+            gain: 0.7,
             start: 0,
             scan: None,
-            file: PathBuf::from("handpan.wav"),
+            file: PathBuf::from("juno.wav"),
         }
     }
 }
@@ -123,21 +125,20 @@ impl GranularEngine {
             param_rcvr,
             gate: true,
             gate_rcvr,
-            delay: StereoDelay::new(2.45625, 1.53312, 44000, 0.2, 0.0, delay_rcvr),
+            delay: StereoDelay::new(2.45625, 1.53312, 44000, 0.2, 0.5, delay_rcvr),
             sr: 0,
             spawn_timer: 44000,
             scan: false,
         }
     }
 
-    /// Will be used later when I add error propagation
     /// Initializes samples from path
     pub fn init(&mut self) {
         let reader = BufReader::new(File::open(&self.path).expect("Unknown file"));
         let decoder = Decoder::new_wav(reader).expect("Couldn't created decoder for file");
 
         self.sr = decoder.sample_rate();
-        self.samples = decoder.convert_samples().map(Frame::new).collect();
+        self.samples = decoder.convert_samples().map(StereoFrame::new).collect();
     }
 
     pub fn update_params(&mut self) {
@@ -147,6 +148,7 @@ impl GranularEngine {
                 self.init();
                 println!("Initialised with new file");
             }
+
             // Enable or disable scanning
             if let Some(scan) = params.scan {
                 self.scan = scan;
@@ -163,54 +165,59 @@ impl GranularEngine {
         self.samples.len()
     }
 
-    pub fn process(&mut self, size: usize) -> Vec<Frame> {
-        let mut buf = Vec::with_capacity(size);
-        for _ in 0..size {
-            self.update_params();
+    pub fn spawn_grain(&mut self) {
+        let rand = (random::<f32>()
+            * self.params.grain_length as f32
+            * 2.0
+            * self.params.grain_spread) as usize;
+        self.grains.push(Grain::new(
+            self.params.grain_length,
+            self.params.start + rand,
+        ));
+        self.spawn_timer = self.params.grain_density;
+    }
 
-            // Keep delay moving even when gate is not pressed
-            let mut dry = Frame(0.0, 0.0);
+    // Return one frame of granular audio
+    pub fn process(&mut self) -> StereoFrame {
+        self.update_params();
 
-            // Remove finished grains
-            self.grains.retain(|grain| !grain.finished);
-            // Spawn new grains if Gate is pressed
-            if self.gate {
-                if self.spawn_timer == 0 {
-                    let rand = (random::<f32>()
-                        * self.params.grain_length as f32
-                        * 2.0
-                        * self.params.grain_spread) as usize;
-                    self.grains.push(Grain::new(
-                        self.params.grain_length,
-                        self.params.start + rand,
-                    ));
-                    self.spawn_timer = self.params.grain_density;
-                }
-                // Decrease timer
-                self.spawn_timer -= 1;
-                if self.scan {
-                    self.params.start += 1;
-                }
+        // Keep delay processing even when gate is not pressed
+        let mut dry = StereoFrame(0.0, 0.0);
+
+        // Remove finished grains
+        self.grains.retain(|grain| !grain.finished);
+
+        // Spawn new grains if Gate is pressed
+        if self.gate {
+            // Decrease timer
+            self.spawn_timer -= 1;
+
+            if self.spawn_timer == 0 {
+                self.spawn_grain();
             }
-
-            // Read grains
-            let fract = self.grains.len() as f32;
-            for grain in &mut self.grains {
-                let read_pos = grain.start + grain.t;
-                let out = &self.samples[read_pos % self.samples.len()];
-
-                grain.t += 2;
-                if grain.t >= grain.length {
-                    grain.finished = true;
-                }
-                dry += out.scale(window(grain.length, grain.t) / fract.max(1.0));
-                // dry += out.scale(env(grain.length, grain.t, 0.5) / fract.max(1.0));
+            if self.scan {
+                self.params.start += 1;
             }
-
-            let out = self.delay.process(dry);
-            buf.push(out)
         }
 
-        buf
+        // Read grains even if gate is not pressed, for smooth decay
+        for grain in &mut self.grains {
+            let read_pos = grain.start + grain.t;
+            let out = &self.samples[read_pos % self.samples.len()];
+
+            grain.t += 2;
+            if grain.t >= grain.length {
+                grain.finished = true;
+            };
+            dry += out.scale(window(grain.length, grain.t));
+        }
+
+        self.delay.process(dry).scale(self.params.gain)
+    }
+
+    pub fn process_block(&mut self, buf: &mut [StereoFrame]) {
+        for i in 0..buf.len() {
+            buf[i] = self.process();
+        }
     }
 }

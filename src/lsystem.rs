@@ -53,9 +53,7 @@ impl LSystem {
                 current_line = vec![turtle.pos()]
             } else {
                 match c {
-                    'x' => {
-                        // turtle.forward(1.0);
-                    }
+                    'x' => {}
                     'f' => {
                         turtle.forward(2.0);
                     }

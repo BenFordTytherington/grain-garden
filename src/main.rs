@@ -4,11 +4,11 @@ mod grain;
 mod lsystem;
 mod ui;
 
-use crate::dsp::interleave;
+use crate::dsp::{interleave, StereoFrame};
 use crate::grain::GranularEngine;
 use crate::lsystem::LSystem;
 use crate::ui::{DelayUi, GranularUi, LSystemUi};
-use egui::{Color32, Id, Widget};
+use egui::{Color32, Frame, Id, Widget};
 use rodio::buffer::SamplesBuffer;
 use rodio::{OutputStream, Sink};
 use std::sync::mpsc::channel;
@@ -74,11 +74,13 @@ impl eframe::App for App {
 }
 
 fn main() -> eframe::Result {
+    // Setup Channels for Ui and audio interaction
     let (param_send, param_receive) = channel();
     let (gate_send, gate_receive) = channel();
     let (delay_send, delay_receive) = channel();
 
-    let mut granny = GranularEngine::new("handpan.wav", param_receive, gate_receive, delay_receive);
+    // Init granular engine
+    let mut granny = GranularEngine::new("juno.wav", param_receive, gate_receive, delay_receive);
     granny.init();
     let sample_len = granny.buffer_size();
 
@@ -87,30 +89,31 @@ fn main() -> eframe::Result {
 
     // Start audio thread
     std::thread::spawn(move || {
+        let mut buffer: Vec<StereoFrame> = vec![StereoFrame::new(0.0); 512];
         loop {
             // Exit current loop early if the sink has enough samples to play
             if sink.len() >= 2 {
                 continue;
             }
 
-            let output: Vec<f32> = interleave(granny.process(2048)); // Arbitrary buffer size
+            granny.process_block(buffer.as_mut_slice());
+            let output: Vec<f32> = interleave(buffer.as_slice());
 
             // Play the output buffer
             sink.append(SamplesBuffer::new(2, 44000, output));
         }
     });
 
-    let granular_ui = GranularUi::new(param_send, gate_send, sample_len);
-
-    let delay_ui = DelayUi::new(delay_send);
-
-    // Barnsley fern
+    // Barnsley fern L-System
     let mut system = LSystem::new('x', vec!["x->f+[[x]-x]-f[-fx]+x", "f->ff"], 35.0);
-
     system.iterate(6);
 
+    // Create Ui widgets
+    let granular_ui = GranularUi::new(param_send, gate_send, sample_len);
+    let delay_ui = DelayUi::new(delay_send);
     let lsystem_ui = LSystemUi::new(Color32::from_hex("#99a933").unwrap(), 500.0, system);
 
+    // Run the eframe app
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(
         "Granular Plants",

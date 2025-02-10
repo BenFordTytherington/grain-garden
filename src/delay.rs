@@ -1,4 +1,4 @@
-use crate::dsp::Frame;
+use crate::dsp::StereoFrame;
 use std::sync::mpsc::Receiver;
 
 #[derive(Debug)]
@@ -66,6 +66,7 @@ impl StereoDelay {
                 mix,
                 time_l,
                 time_r,
+                bypass: true
             },
             params_receiver,
         }
@@ -81,22 +82,27 @@ impl StereoDelay {
         }
     }
 
-    pub fn process(&mut self, sample: Frame) -> Frame {
+    pub fn process(&mut self, sample: StereoFrame) -> StereoFrame {
         self.update_params();
 
-        let wet_l = self.dl_left.read();
-        let wet_r = self.dl_right.read();
+        if !self.params.bypass {
+            let wet_l = self.dl_left.read();
+            let wet_r = self.dl_right.read();
 
-        self.dl_left
-            .write(sample.0 + (wet_l * self.params.feedback));
-        self.dl_right
-            .write(sample.1 + (wet_r * self.params.feedback));
+            self.dl_left
+                .write(sample.0 + (wet_l * self.params.feedback));
+            self.dl_right
+                .write(sample.1 + (wet_r * self.params.feedback));
 
-        self.dl_left.advance();
-        self.dl_right.advance();
+            self.dl_left.advance();
+            self.dl_right.advance();
 
-        let mixed = |dry, wet| dry * (1.0 - self.params.mix) + wet * self.params.mix;
-        Frame(mixed(sample.0, wet_l), mixed(sample.1, wet_r))
+            let mixed = |dry, wet| dry * (1.0 - self.params.mix) + wet * self.params.mix;
+            StereoFrame(mixed(sample.0, wet_l), mixed(sample.1, wet_r))
+        } else {
+            sample
+        }
+
     }
 }
 
@@ -106,6 +112,7 @@ pub struct DelayParams {
     pub mix: f32,
     pub time_l: f32,
     pub time_r: f32,
+    pub bypass: bool,
 }
 
 impl Default for DelayParams {
@@ -115,6 +122,7 @@ impl Default for DelayParams {
             mix: 0.2,
             time_l: 1.0,
             time_r: 2.0,
+            bypass: true
         }
     }
 }
