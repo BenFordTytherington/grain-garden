@@ -7,8 +7,10 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
-use std::time::Duration;
 
+// TODO Granular engine now returns a buffer of samples
+// No need for receivers anymore?? as it can be directly modified by GUI in main thread
+// Delay needs to be extracted
 #[derive(Debug)]
 pub struct GranularEngine {
     path: PathBuf,
@@ -160,72 +162,55 @@ impl GranularEngine {
     pub fn buffer_size(&self) -> usize {
         self.samples.len()
     }
-}
 
-impl Iterator for GranularEngine {
-    type Item = f32;
+    pub fn process(&mut self, size: usize) -> Vec<Frame> {
+        let mut buf = Vec::with_capacity(size);
+        for _ in 0..size {
+            self.update_params();
 
-    fn next(&mut self) -> Option<Self::Item> {
-        self.update_params();
+            // Keep delay moving even when gate is not pressed
+            let mut dry = Frame(0.0, 0.0);
 
-        // Keep delay moving even when gate is not pressed
-        let mut dry_sample = 0_f32;
-
-        // Remove finished grains
-        self.grains.retain(|grain| !grain.finished);
-        // Spawn new grains if Gate is pressed
-        if self.gate {
-            if self.spawn_timer == 0 {
-                let rand = (random::<f32>()
-                    * self.params.grain_length as f32
-                    * 2.0
-                    * self.params.grain_spread) as usize;
-                self.grains.push(Grain::new(
-                    self.params.grain_length,
-                    self.params.start + rand,
-                ));
-                self.spawn_timer = self.params.grain_density;
+            // Remove finished grains
+            self.grains.retain(|grain| !grain.finished);
+            // Spawn new grains if Gate is pressed
+            if self.gate {
+                if self.spawn_timer == 0 {
+                    let rand = (random::<f32>()
+                        * self.params.grain_length as f32
+                        * 2.0
+                        * self.params.grain_spread) as usize;
+                    self.grains.push(Grain::new(
+                        self.params.grain_length,
+                        self.params.start + rand,
+                    ));
+                    self.spawn_timer = self.params.grain_density;
+                }
+                // Decrease timer
+                self.spawn_timer -= 1;
+                if self.scan {
+                    self.params.start += 1;
+                }
             }
-            // Decrease timer
-            self.spawn_timer -= 1;
-            if self.scan {
-                self.params.start += 1;
+
+            // Read grains
+            let fract = self.grains.len() as f32;
+            for grain in &mut self.grains {
+                let read_pos = grain.start + grain.t;
+                let out = &self.samples[read_pos % self.samples.len()];
+
+                grain.t += 2;
+                if grain.t >= grain.length {
+                    grain.finished = true;
+                }
+                dry += out.scale(window(grain.length, grain.t) / fract.max(1.0));
+                // dry += out.scale(env(grain.length, grain.t, 0.5) / fract.max(1.0));
             }
+
+            let out = self.delay.process(dry);
+            buf.push(out)
         }
-        // Read grains
-        let fract = self.grains.len() as f32;
-        for grain in &mut self.grains {
-            let read_pos = grain.start + grain.t;
-            let out = self.samples[read_pos % self.samples.len()].mono()
-                * env(grain.length, grain.t, 0.5);
 
-            grain.t += 1;
-            if grain.t == grain.length {
-                grain.finished = true;
-            }
-            dry_sample += out / fract.max(1.0);
-        }
-
-        let out = self.delay.process(dry_sample);
-        Some(out)
-    }
-}
-
-impl Source for GranularEngine {
-    fn current_frame_len(&self) -> Option<usize> {
-        Some(self.samples.len())
-    }
-
-    fn channels(&self) -> u16 {
-        2
-    }
-
-    fn sample_rate(&self) -> u32 {
-        self.sr
-    }
-
-    fn total_duration(&self) -> Option<Duration> {
-        self.current_frame_len()
-            .map(|samples| Duration::from_secs(samples as u64 * self.sr as u64))
+        buf
     }
 }

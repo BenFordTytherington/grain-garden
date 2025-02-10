@@ -4,20 +4,19 @@ mod grain;
 mod lsystem;
 mod ui;
 
+use crate::dsp::interleave;
 use crate::grain::GranularEngine;
 use crate::lsystem::LSystem;
 use crate::ui::{DelayUi, GranularUi, LSystemUi};
 use egui::{Color32, Id, Widget};
+use rodio::buffer::SamplesBuffer;
 use rodio::{OutputStream, Sink};
 use std::sync::mpsc::channel;
 
 struct App {
     granular_ui: GranularUi,
     lsystem_ui: LSystemUi,
-    delay_ui: DelayUi, // Grain params
-                       // Delay params
-                       // Reverb params
-                       // Plant params
+    delay_ui: DelayUi,
 }
 
 impl App {
@@ -86,7 +85,20 @@ fn main() -> eframe::Result {
     let (_stream, stream_handle) = OutputStream::try_default().unwrap();
     let sink = Sink::try_new(&stream_handle).unwrap();
 
-    sink.append(granny);
+    // Start audio thread
+    std::thread::spawn(move || {
+        loop {
+            // Exit current loop early if the sink has enough samples to play
+            if sink.len() >= 2 {
+                continue;
+            }
+
+            let output: Vec<f32> = interleave(granny.process(2048)); // Arbitrary buffer size
+
+            // Play the output buffer
+            sink.append(SamplesBuffer::new(2, 44000, output));
+        }
+    });
 
     let granular_ui = GranularUi::new(param_send, gate_send, sample_len);
 
@@ -105,8 +117,6 @@ fn main() -> eframe::Result {
         native_options,
         Box::new(|cc| Ok(Box::new(App::new(cc, granular_ui, lsystem_ui, delay_ui)))),
     )?;
-
-    sink.sleep_until_end();
 
     Ok(())
 }

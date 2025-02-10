@@ -1,3 +1,4 @@
+use crate::dsp::Frame;
 use std::sync::mpsc::Receiver;
 
 #[derive(Debug)]
@@ -43,7 +44,6 @@ pub struct StereoDelay {
     sr: usize,
     params: DelayParams,
     params_receiver: Receiver<DelayParams>,
-    channel: bool, // Bool used to keep track of which delay line to write to
 }
 
 impl StereoDelay {
@@ -68,7 +68,6 @@ impl StereoDelay {
                 time_r,
             },
             params_receiver,
-            channel: false,
         }
     }
 
@@ -82,20 +81,22 @@ impl StereoDelay {
         }
     }
 
-    pub fn process(&mut self, sample: f32) -> f32 {
+    pub fn process(&mut self, sample: Frame) -> Frame {
         self.update_params();
-        let dl = if self.channel {
-            &mut self.dl_right
-        } else {
-            &mut self.dl_left
-        };
-        let wet = dl.read();
 
-        dl.write(sample + (wet * self.params.feedback));
-        dl.advance();
+        let wet_l = self.dl_left.read();
+        let wet_r = self.dl_right.read();
 
-        self.channel = !self.channel;
-        sample * (1.0 - self.params.mix) + wet * self.params.mix
+        self.dl_left
+            .write(sample.0 + (wet_l * self.params.feedback));
+        self.dl_right
+            .write(sample.1 + (wet_r * self.params.feedback));
+
+        self.dl_left.advance();
+        self.dl_right.advance();
+
+        let mixed = |dry, wet| dry * (1.0 - self.params.mix) + wet * self.params.mix;
+        Frame(mixed(sample.0, wet_l), mixed(sample.1, wet_r))
     }
 }
 
