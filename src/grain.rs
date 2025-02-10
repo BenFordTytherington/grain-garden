@@ -31,6 +31,7 @@ pub struct Grain {
     t: usize,
     length: usize,
     start: usize,
+    pan: f32,
     finished: bool,
 }
 
@@ -39,6 +40,7 @@ pub struct GranularParams {
     pub grain_density: usize,
     pub grain_length: usize,
     pub grain_spread: f32,
+    pub pan_spread: f32,
     pub gain: f32,
     pub start: usize,
     pub scan: Option<bool>,
@@ -51,6 +53,7 @@ impl Default for GranularParams {
             grain_density: 44000,
             grain_length: 44000,
             grain_spread: 0.0,
+            pan_spread: 0.0,
             gain: 0.7,
             start: 0,
             scan: None,
@@ -60,11 +63,12 @@ impl Default for GranularParams {
 }
 
 impl Grain {
-    pub fn new(length: usize, start: usize) -> Self {
+    pub fn new(length: usize, start: usize, pan: f32) -> Self {
         Self {
             t: 0,
             length,
             start,
+            pan,
             finished: false,
         }
     }
@@ -76,6 +80,7 @@ impl Default for Grain {
             t: 0,
             length: 44000,
             start: 0,
+            pan: 0.0,
             finished: false,
         }
     }
@@ -166,13 +171,16 @@ impl GranularEngine {
     }
 
     pub fn spawn_grain(&mut self) {
-        let rand = (random::<f32>()
+        let start_rand = (random::<f32>()
             * self.params.grain_length as f32
             * 2.0
             * self.params.grain_spread) as usize;
+
+        let pan_rand= (random::<f32>() * 2.0 * self.params.pan_spread) - self.params.pan_spread;
         self.grains.push(Grain::new(
             self.params.grain_length,
-            self.params.start + rand,
+            self.params.start + start_rand,
+            pan_rand
         ));
         self.spawn_timer = self.params.grain_density;
     }
@@ -205,11 +213,14 @@ impl GranularEngine {
             let read_pos = grain.start + grain.t;
             let out = &self.samples[read_pos % self.samples.len()];
 
+            let pan = grain.pan;
+
             grain.t += 2;
             if grain.t >= grain.length {
                 grain.finished = true;
             };
-            dry += out.scale(window(grain.length, grain.t));
+            let windowed = out.scale(window(grain.length, grain.t));
+            dry += StereoFrame((1.0 - pan) * windowed.0 * 0.5, (1.0 + pan) * windowed.1 * 0.5);
         }
 
         self.delay.process(dry).scale(self.params.gain)

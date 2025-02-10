@@ -82,6 +82,10 @@ impl GranularUi {
                     .text("Length")
                     .ui(ui);
 
+                let pan = egui::Slider::new(&mut self.params.pan_spread, 0.0..=1.0)
+                    .text("Pan Spread")
+                    .ui(ui);
+
                 if ui.button("Scan").clicked() {
                     let state = self.params.scan.unwrap_or(false);
                     if state {
@@ -98,7 +102,7 @@ impl GranularUi {
                         .expect("Failed to send params");
                 }
 
-                if start.changed() | length.changed() {
+                if start.changed() | length.changed() | pan.changed() {
                     self.sender
                         .send(self.params.clone())
                         .expect("Failed to send params");
