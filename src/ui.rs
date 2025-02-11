@@ -4,7 +4,7 @@ use crate::lsystem::{LSystem, Turtle};
 use eframe::emath;
 use eframe::emath::{pos2, Pos2, Rect, Vec2};
 use eframe::epaint::{Color32, Stroke};
-use egui::{Response, Sense, Ui, Widget};
+use egui::{Response, Sense, Shape, Ui, Widget};
 use rand::{random, Rng};
 use rand_core::SeedableRng;
 use rand_pcg::Pcg64Mcg;
@@ -14,10 +14,13 @@ pub struct LSystemUi {
     pub color: Color32,
     canvas_size: f32,
     pub system: LSystem,
-    lines: Vec<Vec<Pos2>>,
-    seed: u64,
+    lines: Vec<Vec<(Pos2, f32)>>,
+    angle_seed: u64,
+    length_seed: u64,
     pub angle: f32,
-    pub rand_amount: f32,
+    pub angle_rand: f32,
+    pub length_rand: f32,
+    pub len: f32,
 }
 
 impl LSystemUi {
@@ -27,37 +30,41 @@ impl LSystemUi {
             canvas_size,
             lines: vec![],
             system,
-            seed: 123123123,
+            angle_seed: 123123123,
+            length_seed: 123123123,
             angle: 25.0,
-            rand_amount: 2.0,
+            angle_rand: 2.0,
+            length_rand: 2.0,
+            len: 4.0,
         }
     }
 
     // Create vector of lines from system, using turtle commands
-    fn create_lines(&self) -> Vec<Vec<Pos2>> {
-        let mut turtle = Turtle::new();
+    fn create_lines(&self, base_width: f32, min_width: f32, depth: usize) -> Vec<Vec<(Pos2, f32)>> {
+        let mut turtle = Turtle::new(base_width, min_width, depth);
         let mut lines = vec![];
-        let mut current_line: Vec<Pos2> = vec![pos2(0.0, 0.0)];
+        let mut current_line: Vec<(Pos2, f32)> = vec![(pos2(0.0, 0.0), base_width)];
 
-        let mut rng = Pcg64Mcg::seed_from_u64(self.seed);
+        let mut rng = Pcg64Mcg::seed_from_u64(self.angle_seed);
 
         for c in self.system.result.chars() {
             if c == ']' {
                 turtle.pop();
                 lines.push(current_line.clone());
-                current_line = vec![turtle.pos()]
+                current_line = vec![turtle.get()]
             } else {
                 match c {
                     'x' => {}
                     'f' => {
-                        turtle.forward(2.0);
+                        let rand = rng.random::<f32>() * self.length_rand * self.len;
+                        turtle.forward(self.len + rand);
                     }
                     '+' => {
-                        let rand = rng.random::<f32>() * 2.0 * self.rand_amount - self.rand_amount;
+                        let rand = rng.random::<f32>() * 2.0 * self.angle_rand - self.angle_rand;
                         turtle.rotate(self.angle + rand);
                     }
                     '-' => {
-                        let rand = rng.random::<f32>() * 2.0 * self.rand_amount - self.rand_amount;
+                        let rand = rng.random::<f32>() * 2.0 * self.angle_rand - self.angle_rand;
                         turtle.rotate(-self.angle + rand);
                     }
                     '[' => {
@@ -65,16 +72,28 @@ impl LSystemUi {
                     }
                     s => panic!("Invalid symbol: {s} found in L-System!"),
                 };
-                current_line.push(turtle.pos())
+                current_line.push(turtle.get())
             }
         }
         lines.push(current_line.clone());
-
         lines
     }
 
     pub fn randomise_seed(&mut self) {
-        self.seed = random::<u64>();
+        self.angle_seed = random::<u64>();
+        self.length_seed = random::<u64>();
+    }
+
+    fn create_branch(line: &Vec<(Pos2, f32)>, colour: Color32) -> Vec<Shape> {
+        let mut shapes = vec![];
+        let branch_len = line.len() - 1;
+        for i in 0..branch_len {
+            let (first, width) = line[i];
+            let (second, _) = line[i + 1];
+            shapes.push(Shape::line(vec![first, second], Stroke::new(width, colour)))
+        }
+
+        shapes
     }
 
     pub fn ui(&mut self, ui: &mut Ui) -> Response {
@@ -91,16 +110,17 @@ impl LSystemUi {
 
         let map_coord = |p: Pos2| pos2(p.x + self.canvas_size / 2.0, self.canvas_size - p.y);
 
-        self.lines = self.create_lines();
+        self.lines = self.create_lines(16.0, 1.2, 5);
 
-        for line in &self.lines {
-            let points = line
+        for (i, line) in self.lines.iter().enumerate() {
+            let point_widths = line
                 .iter()
-                .map(|point| transform * map_coord(*point))
-                .collect();
+                .map(|(point, width)| (transform * map_coord(*point), *width))
+                .collect::<Vec<_>>();
 
-            let shape = egui::Shape::line(points, Stroke::new(2.3, self.color));
-            painter.add(shape);
+            let scalar = (self.lines.len() - i) as f32 * 64.0 / self.lines.len() as f32;
+            let branch = Self::create_branch(&point_widths, Color32::blend(self.color, Color32::from_rgba_premultiplied(0, 0, 0, scalar as u8)));
+            painter.extend(branch);
         }
 
         response

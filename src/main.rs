@@ -58,11 +58,17 @@ impl eframe::App for App {
             .resizable(true)
             .show(ctx, |ui| {
                 ui.heading("Plant Controls");
-                egui::Slider::new(&mut self.lsystem_ui.angle, 1.0..=45.0)
+                egui::Slider::new(&mut self.lsystem_ui.angle, 0.0..=65.0)
                     .text("Angle")
                     .ui(ui);
-                egui::Slider::new(&mut self.lsystem_ui.rand_amount, 1.0..=45.0)
-                    .text("Randomise amount")
+                egui::Slider::new(&mut self.lsystem_ui.len, 0.1..=6.0)
+                    .text("Length")
+                    .ui(ui);
+                egui::Slider::new(&mut self.lsystem_ui.angle_rand, 0.0..=65.0)
+                    .text("Angle randomise")
+                    .ui(ui);
+                egui::Slider::new(&mut self.lsystem_ui.length_rand, 0.0..=2.0)
+                    .text("Length randomise")
                     .ui(ui);
                 if ui.button("Randomise").clicked() {
                     self.lsystem_ui.randomise_seed();
@@ -111,8 +117,8 @@ fn main() -> eframe::Result {
     });
 
     // Barnsley fern L-System
-    let mut system = LSystem::new('x', vec!["x->f+[[x]-x]-f[-fx]+x", "f->ff"]);
-    system.iterate(6);
+    let mut system = LSystem::new("x", vec!["x->f+[[x]-x]-f[-fx]+x", "f->ff"]);
+    system.iterate(5);
 
     // Create Ui widgets
     let granular_ui = GranularUi::new(param_send, gate_send, sample_len);
