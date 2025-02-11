@@ -37,28 +37,57 @@ impl LSystem {
             rules: rule_map,
         }
     }
+
+    // RL encoded version of string, only encoding 'f' runs.
+    // Also removes x nodes, as these are ignored in drawing.
+    pub fn encoded(&self) -> Vec<String> {
+        let mut vec = vec![];
+        let mut out = "".to_string();
+        let mut occurrences = 1;
+        let mut iter = self.result.chars().filter(|c| *c != 'x');
+        let mut last = iter.next().expect("No characters to encode");
+
+        for c in iter {
+            if c == last && last == 'f' { // Currently in a run / started a run
+                if out != "".to_string() {
+                    vec.push(out.clone());
+                }
+                out = "".to_string();
+                occurrences += 1;
+            } else if occurrences == 1 { // 1 length run (skip)
+                out.push(last);
+            } else { // A run ended
+                vec.push(occurrences.to_string());
+                occurrences = 1; // Reset counter
+            }
+            last = c;
+        }
+        vec.push(out);
+
+        vec
+    }
 }
 
-// Struct used for generating points based off interpeting standard turtle commands
+// Struct used for generating lines based off interpreting standard turtle commands
 pub struct Turtle {
     pos: Pos2,
     angle: f32,
     pub width: f32,
     base_width: f32,
     min_width: f32,
-    depth: usize,
+    width_falloff: f32,
     stack: Vec<(Pos2, f32, f32)>,
 }
 
 impl Turtle {
-    pub fn new(width: f32, min_width: f32, depth: usize) -> Self {
+    pub fn new(width: f32, min_width: f32, width_falloff: f32) -> Self {
         Self {
             pos: pos2(0.0, 0.0),
             angle: PI / 2.0,
             width,
             base_width: width,
             min_width,
-            depth,
+            width_falloff,
             stack: vec![],
         }
     }
@@ -74,9 +103,8 @@ impl Turtle {
 
     pub fn rotate(&mut self, angle: f32) {
         self.angle += angle.to_radians();
-        // Approx coefficient of 3 seems to keep width in range
-        let decrease = (self.base_width - self.min_width) / (self.depth as f32 * 3.0);
-        self.width  = self.width - decrease;
+        let decrease = (self.base_width - self.min_width) * self.width_falloff * 0.25;
+        self.width  = (self.width - decrease).max(self.min_width);
     }
 
     pub fn push(&mut self) {

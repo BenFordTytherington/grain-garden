@@ -58,28 +58,14 @@ impl eframe::App for App {
             .resizable(true)
             .show(ctx, |ui| {
                 ui.heading("Plant Controls");
-                egui::Slider::new(&mut self.lsystem_ui.angle, 0.0..=65.0)
-                    .text("Angle")
-                    .ui(ui);
-                egui::Slider::new(&mut self.lsystem_ui.len, 0.1..=6.0)
-                    .text("Length")
-                    .ui(ui);
-                egui::Slider::new(&mut self.lsystem_ui.angle_rand, 0.0..=65.0)
-                    .text("Angle randomise")
-                    .ui(ui);
-                egui::Slider::new(&mut self.lsystem_ui.length_rand, 0.0..=2.0)
-                    .text("Length randomise")
-                    .ui(ui);
-                if ui.button("Randomise").clicked() {
-                    self.lsystem_ui.randomise_seed();
-                }
+                self.lsystem_ui.plant_ui(ui);
             });
 
         // Draw plant last so it occupies remaining screenspace
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical_centered(|ui| {
                 ui.label("Plant");
-                self.lsystem_ui.ui(ui);
+                self.lsystem_ui.plant_window(ui);
             });
         });
     }
@@ -116,14 +102,22 @@ fn main() -> eframe::Result {
         }
     });
 
-    // Barnsley fern L-System
-    let mut system = LSystem::new("x", vec!["x->f+[[x]-x]-f[-fx]+x", "f->ff"]);
-    system.iterate(5);
+    // Some L-systems, and iterating an aesthetic (and computable) amount
+    let mut systems = vec![
+        LSystem::new("x", vec!["x->f+[[x]-x]-f[-fx]+x", "f->ff"]),
+        LSystem::new("x", vec!["x->f-[[x]+x]+f[+fx]-x", "f->ff"]),
+        LSystem::new("x", vec!["x->f[+x][-x]fx", "f->ff"]),
+        LSystem::new("x", vec!["x->f[-x]f[+x]-x", "f->ff"]),
+    ];
+    systems[0].iterate(6);
+    systems[1].iterate(6);
+    systems[2].iterate(9);
+    systems[3].iterate(7);
 
     // Create Ui widgets
     let granular_ui = GranularUi::new(param_send, gate_send, sample_len);
     let delay_ui = DelayUi::new(delay_send);
-    let lsystem_ui = LSystemUi::new(Color32::from_hex("#99a933").unwrap(), 500.0, system);
+    let lsystem_ui = LSystemUi::new(systems);
 
     // Run the eframe app
     let native_options = eframe::NativeOptions::default();
