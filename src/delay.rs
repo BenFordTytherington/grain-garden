@@ -87,7 +87,7 @@ impl StereoDelay {
                 time_l,
                 time_r,
                 bypass: true,
-                pitch: false
+                pitch: false,
             },
             params_receiver,
         }
@@ -99,10 +99,8 @@ impl StereoDelay {
             let l_time = (self.params.time_l * self.sr as f32) as usize;
             let r_time = (self.params.time_r * self.sr as f32) as usize;
             if self.params.pitch {
-                self.dl_left
-                    .set_time_smooth(l_time);
-                self.dl_right
-                    .set_time_smooth(r_time);
+                self.dl_left.set_time_smooth(l_time);
+                self.dl_right.set_time_smooth(r_time);
             } else {
                 self.dl_left.set_time(l_time);
                 self.dl_right.set_time(r_time);
@@ -130,7 +128,6 @@ impl StereoDelay {
         } else {
             sample
         }
-
     }
 }
 
@@ -152,7 +149,7 @@ impl Default for DelayParams {
             time_l: 1.0,
             time_r: 2.0,
             bypass: true,
-            pitch: false
+            pitch: false,
         }
     }
 }

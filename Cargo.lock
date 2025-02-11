@@ -1454,6 +1454,8 @@ dependencies = [
  "eframe",
  "egui",
  "rand 0.9.0",
+ "rand_core 0.9.0",
+ "rand_pcg",
  "rodio",
 ]
 
@@ -2570,6 +2572,15 @@ checksum = "b08f3c9802962f7e1b25113931d94f43ed9725bebc59db9d0c3e9a23b67e15ff"
 dependencies = [
  "getrandom 0.3.0",
  "zerocopy 0.8.14",
+]
+
+[[package]]
+name = "rand_pcg"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b48ac3f7ffaab7fac4d2376632268aa5f89abdb55f7ebf8f4d11fffccb2320f7"
+dependencies = [
+ "rand_core 0.9.0",
 ]
 
 [[package]]

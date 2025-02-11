@@ -171,16 +171,15 @@ impl GranularEngine {
     }
 
     pub fn spawn_grain(&mut self) {
-        let start_rand = (random::<f32>()
-            * self.params.grain_length as f32
-            * 2.0
-            * self.params.grain_spread) as usize;
+        let start_rand =
+            (random::<f32>() * self.params.grain_length as f32 * 2.0 * self.params.grain_spread)
+                as usize;
 
-        let pan_rand= (random::<f32>() * 2.0 * self.params.pan_spread) - self.params.pan_spread;
+        let pan_rand = (random::<f32>() * 2.0 * self.params.pan_spread) - self.params.pan_spread;
         self.grains.push(Grain::new(
             self.params.grain_length,
             self.params.start + start_rand,
-            pan_rand
+            pan_rand,
         ));
         self.spawn_timer = self.params.grain_density;
     }
@@ -220,7 +219,10 @@ impl GranularEngine {
                 grain.finished = true;
             };
             let windowed = out.scale(window(grain.length, grain.t));
-            dry += StereoFrame((1.0 - pan) * windowed.0 * 0.5, (1.0 + pan) * windowed.1 * 0.5);
+            dry += StereoFrame(
+                (1.0 - pan) * windowed.0 * 0.5,
+                (1.0 + pan) * windowed.1 * 0.5,
+            );
         }
 
         self.delay.process(dry).scale(self.params.gain)

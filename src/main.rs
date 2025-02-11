@@ -8,7 +8,7 @@ use crate::dsp::{interleave, StereoFrame};
 use crate::grain::GranularEngine;
 use crate::lsystem::LSystem;
 use crate::ui::{DelayUi, GranularUi, LSystemUi};
-use egui::{Color32, Frame, Id, Widget};
+use egui::{Color32, Id, Widget};
 use rodio::buffer::SamplesBuffer;
 use rodio::{OutputStream, Sink};
 use std::sync::mpsc::channel;
@@ -58,9 +58,15 @@ impl eframe::App for App {
             .resizable(true)
             .show(ctx, |ui| {
                 ui.heading("Plant Controls");
-                egui::Slider::new(&mut self.lsystem_ui.system.angle, 1.0..=45.0)
+                egui::Slider::new(&mut self.lsystem_ui.angle, 1.0..=45.0)
                     .text("Angle")
                     .ui(ui);
+                egui::Slider::new(&mut self.lsystem_ui.rand_amount, 1.0..=45.0)
+                    .text("Randomise amount")
+                    .ui(ui);
+                if ui.button("Randomise").clicked() {
+                    self.lsystem_ui.randomise_seed();
+                }
             });
 
         // Draw plant last so it occupies remaining screenspace
@@ -105,7 +111,7 @@ fn main() -> eframe::Result {
     });
 
     // Barnsley fern L-System
-    let mut system = LSystem::new('x', vec!["x->f+[[x]-x]-f[-fx]+x", "f->ff"], 35.0);
+    let mut system = LSystem::new('x', vec!["x->f+[[x]-x]-f[-fx]+x", "f->ff"]);
     system.iterate(6);
 
     // Create Ui widgets

@@ -1,16 +1,23 @@
 use crate::delay::DelayParams;
 use crate::grain::GranularParams;
-use crate::lsystem::LSystem;
+use crate::lsystem::{LSystem, Turtle};
 use eframe::emath;
 use eframe::emath::{pos2, Pos2, Rect, Vec2};
 use eframe::epaint::{Color32, Stroke};
 use egui::{Response, Sense, Ui, Widget};
+use rand::{random, Rng};
+use rand_core::SeedableRng;
+use rand_pcg::Pcg64Mcg;
 use std::sync::mpsc::Sender;
 
 pub struct LSystemUi {
     pub color: Color32,
     canvas_size: f32,
     pub system: LSystem,
+    lines: Vec<Vec<Pos2>>,
+    seed: u64,
+    pub angle: f32,
+    pub rand_amount: f32,
 }
 
 impl LSystemUi {
@@ -18,8 +25,56 @@ impl LSystemUi {
         Self {
             color,
             canvas_size,
+            lines: vec![],
             system,
+            seed: 123123123,
+            angle: 25.0,
+            rand_amount: 2.0,
         }
+    }
+
+    // Create vector of lines from system, using turtle commands
+    fn create_lines(&self) -> Vec<Vec<Pos2>> {
+        let mut turtle = Turtle::new();
+        let mut lines = vec![];
+        let mut current_line: Vec<Pos2> = vec![pos2(0.0, 0.0)];
+
+        let mut rng = Pcg64Mcg::seed_from_u64(self.seed);
+
+        for c in self.system.result.chars() {
+            if c == ']' {
+                turtle.pop();
+                lines.push(current_line.clone());
+                current_line = vec![turtle.pos()]
+            } else {
+                match c {
+                    'x' => {}
+                    'f' => {
+                        turtle.forward(2.0);
+                    }
+                    '+' => {
+                        let rand = rng.random::<f32>() * 2.0 * self.rand_amount - self.rand_amount;
+                        turtle.rotate(self.angle + rand);
+                    }
+                    '-' => {
+                        let rand = rng.random::<f32>() * 2.0 * self.rand_amount - self.rand_amount;
+                        turtle.rotate(-self.angle + rand);
+                    }
+                    '[' => {
+                        turtle.push();
+                    }
+                    s => panic!("Invalid symbol: {s} found in L-System!"),
+                };
+                current_line.push(turtle.pos())
+            }
+        }
+        lines.push(current_line.clone());
+
+        lines
+    }
+
+    pub fn randomise_seed(&mut self) {
+        self.seed = random::<u64>();
     }
 
     pub fn ui(&mut self, ui: &mut Ui) -> Response {
@@ -36,7 +91,9 @@ impl LSystemUi {
 
         let map_coord = |p: Pos2| pos2(p.x + self.canvas_size / 2.0, self.canvas_size - p.y);
 
-        for line in self.system.lines() {
+        self.lines = self.create_lines();
+
+        for line in &self.lines {
             let points = line
                 .iter()
                 .map(|point| transform * map_coord(*point))
@@ -74,10 +131,9 @@ impl GranularUi {
         ui.heading("Grain Controls");
         ui.vertical_centered(|ui| {
             ui.horizontal(|ui| {
-                let start =
-                    egui::Slider::new(&mut self.params.start, 0..=(self.buf_len - 1))
-                        .text("Start")
-                        .ui(ui);
+                let start = egui::Slider::new(&mut self.params.start, 0..=(self.buf_len - 1))
+                    .text("Start")
+                    .ui(ui);
                 let length = egui::Slider::new(&mut self.params.grain_length, 0..=88000)
                     .text("Length")
                     .ui(ui);
@@ -170,19 +226,19 @@ impl DelayUi {
 
             if ui.button("Bypass").clicked() {
                 self.params.bypass = !self.params.bypass;
-                self.sender.send(self.params.clone()).expect("Failed to send params")
+                self.sender
+                    .send(self.params.clone())
+                    .expect("Failed to send params")
             }
 
             if ui.button("Pitch taps").clicked() {
                 self.params.pitch = !self.params.pitch;
-                self.sender.send(self.params.clone()).expect("Failed to send params")
+                self.sender
+                    .send(self.params.clone())
+                    .expect("Failed to send params")
             }
 
-            if mix.changed()
-                | feedback.changed()
-                | time_l.changed()
-                | time_r.changed()
-            {
+            if mix.changed() | feedback.changed() | time_l.changed() | time_r.changed() {
                 self.sender
                     .send(self.params.clone())
                     .expect("Failed to send params");

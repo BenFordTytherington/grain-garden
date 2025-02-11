@@ -8,7 +8,6 @@ pub struct LSystem {
     pub axiom: String,
     pub result: String,
     pub rules: HashMap<char, String>,
-    pub angle: f32,
 }
 
 impl LSystem {
@@ -24,7 +23,7 @@ impl LSystem {
     }
 
     // Parse rules as strings into rule set
-    pub fn new(axiom: char, rules: Vec<&str>, angle: f32) -> Self {
+    pub fn new(axiom: char, rules: Vec<&str>) -> Self {
         let mut rule_map = HashMap::new();
         // TODO This is some ugly parsing, make it better
         rules.iter().for_each(|rule| {
@@ -36,49 +35,12 @@ impl LSystem {
             result: axiom.to_string(),
             axiom: axiom.to_string(),
             rules: rule_map,
-            angle,
         }
-    }
-
-    // Create vector of lines from system, using turtle commands
-    pub fn lines(&self) -> Vec<Vec<Pos2>> {
-        let mut turtle = Turtle::new();
-        let mut lines = vec![];
-        let mut current_line: Vec<Pos2> = vec![pos2(0.0, 0.0)];
-
-        for c in self.result.chars() {
-            if c == ']' {
-                turtle.pop();
-                lines.push(current_line.clone());
-                current_line = vec![turtle.pos()]
-            } else {
-                match c {
-                    'x' => {}
-                    'f' => {
-                        turtle.forward(2.0);
-                    }
-                    '+' => {
-                        turtle.rotate(self.angle);
-                    }
-                    '-' => {
-                        turtle.rotate(-self.angle);
-                    }
-                    '[' => {
-                        turtle.push();
-                    }
-                    s => panic!("Invalid symbol: {s} found in L-System!"),
-                };
-                current_line.push(turtle.pos())
-            }
-        }
-        lines.push(current_line.clone());
-
-        lines
     }
 }
 
 // Struct used for generating points based off interpeting standard turtle commands
-struct Turtle {
+pub struct Turtle {
     pos: Pos2,
     angle: f32,
     stack: Vec<(Pos2, f32)>,
