@@ -5,14 +5,17 @@ mod lsystem;
 mod saturation;
 mod ui;
 
+use std::sync::Arc;
 use crate::dsp::{interleave, StereoFrame};
 use crate::grain::GranularEngine;
 use crate::lsystem::LSystem;
 use crate::ui::{DelayUi, GranularUi, LSystemUi};
-use egui::{Id, Widget};
+use egui::{Color32, Id, RichText, Visuals, Widget};
 use rodio::buffer::SamplesBuffer;
 use rodio::{OutputStream, Sink};
 use std::sync::mpsc::channel;
+use eframe::epaint::{CornerRadius, FontFamily};
+use egui::FontSelection::FontId;
 
 struct App {
     granular_ui: GranularUi,
@@ -22,7 +25,7 @@ struct App {
 
 impl App {
     fn new(
-        _cc: &eframe::CreationContext<'_>,
+        cc: &eframe::CreationContext<'_>,
         granular_ui: GranularUi,
         lsystem_ui: LSystemUi,
         delay_ui: DelayUi,
@@ -31,6 +34,28 @@ impl App {
         // Restore app state using cc.storage (requires the "persistence" feature).
         // Use the cc.gl (a glow::Context) to create graphics shaders and buffers that you can use
         // for e.g. egui::PaintCallback.
+
+        let mut visuals = Visuals::default();
+
+        visuals.panel_fill = Color32::from_rgb(41, 34, 37);
+        visuals.override_text_color = Some(Color32::from_rgb(143, 137, 123));
+
+        cc.egui_ctx.set_visuals(visuals);
+
+        let mut fonts = egui::FontDefinitions::default();
+
+        fonts.font_data.insert(
+            "verdant".to_owned(),
+            Arc::new(egui::FontData::from_static(include_bytes!("../assets/fonts/Verdant.ttf"))),
+        );
+        fonts
+            .families
+            .entry(FontFamily::Name("verdant".into()))
+            .or_default()
+            .insert(0, "verdant".to_owned()); // Not main font
+
+        cc.egui_ctx.set_fonts(fonts);
+
         Self {
             granular_ui,
             lsystem_ui,
@@ -65,7 +90,10 @@ impl eframe::App for App {
         // Draw plant last so it occupies remaining screenspace
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical_centered(|ui| {
-                ui.label("Plant");
+                ui.label(
+                    RichText::new("Grain Garden")
+                        .heading().size(60.0).family(FontFamily::Name("verdant".into()))
+                );
                 self.lsystem_ui.plant_window(ui);
             });
         });

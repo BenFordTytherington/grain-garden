@@ -31,7 +31,7 @@ pub struct LSystemUi {
 impl LSystemUi {
     pub fn new(systems: Vec<LSystem>) -> Self {
         Self {
-            color: Color32::from_hex("#99a933").unwrap(),
+            color: Color32::from_hex("#8c7f0b").unwrap(),
             canvas_size: 500.0,
             lines: vec![],
             systems,
