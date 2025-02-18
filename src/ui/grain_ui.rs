@@ -1,6 +1,7 @@
-use std::sync::mpsc::Sender;
-use egui::{Slider, Ui, Widget};
 use crate::grain::GranularParams;
+use crate::ui::{call_on_change, send_params};
+use egui::{Slider, Ui, Widget};
+use std::sync::mpsc::Sender;
 
 #[derive(Debug)]
 pub struct GranularUi {
@@ -20,6 +21,10 @@ impl GranularUi {
             sender,
             gate_sender,
         }
+    }
+
+    fn update_params(&self) {
+        send_params(&self.sender, self.params.clone())
     }
 
     pub fn ui(&mut self, ui: &mut Ui) {
@@ -45,19 +50,16 @@ impl GranularUi {
                         println!("Scan on!");
                     }
                     self.params.scan = Some(!state);
-                    self.sender
-                        .send(GranularParams {
+                    send_params(
+                        &self.sender,
+                        GranularParams {
                             scan: Some(!state),
                             ..self.params.clone()
-                        })
-                        .expect("Failed to send params");
+                        },
+                    );
                 }
 
-                if start.changed() | length.changed() | pan.changed() {
-                    self.sender
-                        .send(self.params.clone())
-                        .expect("Failed to send params");
-                }
+                call_on_change(|| self.update_params(), &[start, length, pan])
             });
             ui.horizontal(|ui| {
                 let density = Slider::new(&mut self.params.grain_density, 2000..=44000)
@@ -81,11 +83,7 @@ impl GranularUi {
                     println!("Sending gate off");
                 }
 
-                if density.changed() | spread.changed() | gain.changed() {
-                    self.sender
-                        .send(self.params.clone())
-                        .expect("Failed to send params");
-                }
+                call_on_change(|| self.update_params(), &[density, spread, gain])
             });
         });
     }

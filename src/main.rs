@@ -5,16 +5,16 @@ mod lsystem;
 mod saturation;
 mod ui;
 
-use std::sync::Arc;
 use crate::dsp::{interleave, StereoFrame};
 use crate::grain::GranularEngine;
 use crate::lsystem::LSystem;
 use crate::ui::{DelayUi, GranularUi, LSystemUi};
-use egui::{CentralPanel, Color32, Context, Id, RichText, SidePanel, TopBottomPanel, Visuals, Widget};
+use eframe::epaint::FontFamily;
+use egui::{CentralPanel, Color32, Context, Id, RichText, SidePanel, TopBottomPanel, Visuals};
 use rodio::buffer::SamplesBuffer;
 use rodio::{OutputStream, Sink};
 use std::sync::mpsc::channel;
-use eframe::epaint::FontFamily;
+use std::sync::Arc;
 
 struct App {
     granular_ui: GranularUi,
@@ -33,19 +33,19 @@ impl App {
         // Restore app state using cc.storage (requires the "persistence" feature).
         // Use the cc.gl (a glow::Context) to create graphics shaders and buffers that you can use
         // for e.g. egui::PaintCallback.
-
-        let mut visuals = Visuals::default();
-
-        visuals.panel_fill = Color32::from_rgb(41, 34, 37);
-        visuals.override_text_color = Some(Color32::from_rgb(143, 137, 123));
-
-        cc.egui_ctx.set_visuals(visuals);
+        cc.egui_ctx.set_visuals(Visuals {
+            panel_fill: Color32::from_rgb(41, 34, 37),
+            override_text_color: Some(Color32::from_rgb(143, 137, 123)),
+            ..Default::default()
+        });
 
         let mut fonts = egui::FontDefinitions::default();
 
         fonts.font_data.insert(
             "verdant".to_owned(),
-            Arc::new(egui::FontData::from_static(include_bytes!("../assets/fonts/Verdant.ttf"))),
+            Arc::new(egui::FontData::from_static(include_bytes!(
+                "../assets/fonts/Verdant.ttf"
+            ))),
         );
         fonts
             .families
@@ -89,7 +89,9 @@ impl eframe::App for App {
             ui.vertical_centered(|ui| {
                 ui.label(
                     RichText::new("Grain Garden")
-                        .heading().size(60.0).family(FontFamily::Name("verdant".into()))
+                        .heading()
+                        .size(60.0)
+                        .family(FontFamily::Name("verdant".into())),
                 );
                 self.lsystem_ui.plant_window(ui);
             });

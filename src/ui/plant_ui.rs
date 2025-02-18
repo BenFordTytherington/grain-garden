@@ -1,3 +1,4 @@
+use crate::lsystem::{LSystem, Turtle};
 use eframe::emath;
 use eframe::emath::{pos2, Pos2, Rect, Vec2};
 use eframe::epaint::{Color32, Shape, Stroke};
@@ -5,7 +6,6 @@ use egui::{Response, Sense, Slider, Ui, Widget};
 use rand::{random, Rng};
 use rand_core::SeedableRng;
 use rand_pcg::Pcg64Mcg;
-use crate::lsystem::{LSystem, Turtle};
 
 pub struct LSystemUi {
     pub color: Color32,
@@ -162,18 +162,14 @@ impl LSystemUi {
         Slider::new(&mut self.angle, 0.0..=65.0)
             .text("Angle")
             .ui(ui);
-        Slider::new(&mut self.len, 0.1..=6.0)
-            .text("Length")
-            .ui(ui);
+        Slider::new(&mut self.len, 0.1..=6.0).text("Length").ui(ui);
         Slider::new(&mut self.angle_rand, 0.0..=65.0)
             .text("Angle randomise")
             .ui(ui);
         Slider::new(&mut self.length_rand, 0.0..=2.0)
             .text("Length randomise")
             .ui(ui);
-        Slider::new(&mut self.system, 0..=3)
-            .text("System")
-            .ui(ui);
+        Slider::new(&mut self.system, 0..=3).text("System").ui(ui);
         Slider::new(&mut self.width_falloff, 0.0..=2.0)
             .drag_value_speed(0.001)
             .text("Width Falloff")

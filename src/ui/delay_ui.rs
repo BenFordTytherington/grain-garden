@@ -1,7 +1,8 @@
-use std::sync::mpsc::Sender;
-use egui::{ComboBox, Slider, Ui, Widget};
 use crate::delay::{DelayParams, FeedbackParams};
 use crate::saturation::SaturationMode;
+use crate::ui::{call_on_change, send_params};
+use egui::{ComboBox, Slider, Ui, Widget};
+use std::sync::mpsc::Sender;
 
 pub struct DelayUi {
     params: DelayParams,
@@ -18,6 +19,14 @@ impl DelayUi {
             fb_params: Default::default(),
             fb_sender,
         }
+    }
+
+    fn update_params(&self) {
+        send_params(&self.sender, self.params.clone())
+    }
+
+    fn update_fb_params(&self) {
+        send_params(&self.fb_sender, self.fb_params.clone())
     }
 
     pub fn ui(&mut self, ui: &mut Ui) {
@@ -54,35 +63,23 @@ impl DelayUi {
 
             if ui.button("Bypass").clicked() {
                 self.params.bypass = !self.params.bypass;
-                self.sender
-                    .send(self.params.clone())
-                    .expect("Failed to send params")
+                self.update_params();
             }
 
             if ui.button("Saturate").clicked() {
                 self.fb_params.saturate = !self.fb_params.saturate;
-                self.fb_sender
-                    .send(self.fb_params.clone())
-                    .expect("Failed to send params")
+                self.update_fb_params();
             }
 
             if ui.button("Pitch taps").clicked() {
                 self.params.pitch = !self.params.pitch;
-                self.sender
-                    .send(self.params.clone())
-                    .expect("Failed to send params")
+                self.update_params();
             }
 
-            if mix.changed() | feedback.changed() | time_l.changed() | time_r.changed() {
-                self.sender
-                    .send(self.params.clone())
-                    .expect("Failed to send params");
-            }
+            call_on_change(|| self.update_params(), &[mix, feedback, time_l, time_r]);
 
             if drive.changed() {
-                self.fb_sender
-                    .send(self.fb_params.clone())
-                    .expect("Failed to send params");
+                self.update_fb_params();
             }
         });
     }
