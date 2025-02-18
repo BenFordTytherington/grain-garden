@@ -2,13 +2,14 @@ mod delay;
 mod dsp;
 mod grain;
 mod lsystem;
+mod saturation;
 mod ui;
 
 use crate::dsp::{interleave, StereoFrame};
 use crate::grain::GranularEngine;
 use crate::lsystem::LSystem;
 use crate::ui::{DelayUi, GranularUi, LSystemUi};
-use egui::{Color32, Id, Widget};
+use egui::{Id, Widget};
 use rodio::buffer::SamplesBuffer;
 use rodio::{OutputStream, Sink};
 use std::sync::mpsc::channel;
@@ -76,9 +77,16 @@ fn main() -> eframe::Result {
     let (param_send, param_receive) = channel();
     let (gate_send, gate_receive) = channel();
     let (delay_send, delay_receive) = channel();
+    let (fb_send, fb_receive) = channel();
 
     // Init granular engine
-    let mut granny = GranularEngine::new("juno.wav", param_receive, gate_receive, delay_receive);
+    let mut granny = GranularEngine::new(
+        "handpan.wav",
+        param_receive,
+        gate_receive,
+        delay_receive,
+        fb_receive,
+    );
     granny.init();
     let sample_len = granny.buffer_size();
 
@@ -87,7 +95,7 @@ fn main() -> eframe::Result {
 
     // Start audio thread
     std::thread::spawn(move || {
-        let mut buffer: Vec<StereoFrame> = vec![StereoFrame::new(0.0); 512];
+        let mut buffer: Vec<StereoFrame> = vec![StereoFrame::new(0.0); 1024];
         loop {
             // Exit current loop early if the sink has enough samples to play
             if sink.len() >= 2 {
@@ -116,7 +124,7 @@ fn main() -> eframe::Result {
 
     // Create Ui widgets
     let granular_ui = GranularUi::new(param_send, gate_send, sample_len);
-    let delay_ui = DelayUi::new(delay_send);
+    let delay_ui = DelayUi::new(delay_send, fb_send);
     let lsystem_ui = LSystemUi::new(systems);
 
     // Run the eframe app

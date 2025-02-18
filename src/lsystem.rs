@@ -48,15 +48,18 @@ impl LSystem {
         let mut last = iter.next().expect("No characters to encode");
 
         for c in iter {
-            if c == last && last == 'f' { // Currently in a run / started a run
-                if out != "".to_string() {
+            if c == last && last == 'f' {
+                // Currently in a run / started a run
+                if out != *"" {
                     vec.push(out.clone());
                 }
                 out = "".to_string();
                 occurrences += 1;
-            } else if occurrences == 1 { // 1 length run (skip)
+            } else if occurrences == 1 {
+                // 1 length run (skip)
                 out.push(last);
-            } else { // A run ended
+            } else {
+                // A run ended
                 vec.push(occurrences.to_string());
                 occurrences = 1; // Reset counter
             }
@@ -104,7 +107,7 @@ impl Turtle {
     pub fn rotate(&mut self, angle: f32) {
         self.angle += angle.to_radians();
         let decrease = (self.base_width - self.min_width) * self.width_falloff * 0.25;
-        self.width  = (self.width - decrease).max(self.min_width);
+        self.width = (self.width - decrease).max(self.min_width);
     }
 
     pub fn push(&mut self) {

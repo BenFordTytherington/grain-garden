@@ -1,4 +1,4 @@
-use crate::delay::{DelayParams, StereoDelay};
+use crate::delay::{DelayParams, FeedbackParams, StereoDelay};
 use crate::dsp::StereoFrame;
 use rand::random;
 use rodio::{Decoder, Source};
@@ -57,7 +57,7 @@ impl Default for GranularParams {
             gain: 0.7,
             start: 0,
             scan: None,
-            file: PathBuf::from("juno.wav"),
+            file: PathBuf::from("handpan.wav"),
         }
     }
 }
@@ -121,6 +121,7 @@ impl GranularEngine {
         param_rcvr: Receiver<GranularParams>,
         gate_rcvr: Receiver<bool>,
         delay_rcvr: Receiver<DelayParams>,
+        fb_rcvr: Receiver<FeedbackParams>,
     ) -> Self {
         Self {
             path: PathBuf::from(path),
@@ -130,7 +131,7 @@ impl GranularEngine {
             param_rcvr,
             gate: true,
             gate_rcvr,
-            delay: StereoDelay::new(2.45625, 1.53312, 44000, 0.2, 0.5, delay_rcvr),
+            delay: StereoDelay::new(2.45625, 1.53312, 44000, 0.2, 0.5, delay_rcvr, fb_rcvr),
             sr: 0,
             spawn_timer: 44000,
             scan: false,

@@ -1,6 +1,7 @@
-use crate::delay::DelayParams;
+use crate::delay::{DelayParams, FeedbackParams};
 use crate::grain::GranularParams;
 use crate::lsystem::{LSystem, Turtle};
+use crate::saturation::SaturationMode;
 use eframe::emath;
 use eframe::emath::{pos2, Pos2, Rect, Vec2};
 use eframe::epaint::{Color32, Stroke};
@@ -51,7 +52,12 @@ impl LSystemUi {
         &self.systems[self.system]
     }
 
-    fn create_lines(&self, base_width: f32, min_width: f32, width_falloff: f32) -> Vec<Vec<(Pos2, f32)>> {
+    fn create_lines(
+        &self,
+        base_width: f32,
+        min_width: f32,
+        width_falloff: f32,
+    ) -> Vec<Vec<(Pos2, f32)>> {
         let mut turtle = Turtle::new(base_width, min_width, width_falloff);
         let mut lines = vec![];
         let mut current_line: Vec<(Pos2, f32)> = vec![(pos2(0.0, 0.0), base_width)];
@@ -77,11 +83,13 @@ impl LSystemUi {
                                 turtle.forward(self.len + rand);
                             }
                             '+' => {
-                                let rand = rng.random::<f32>() * 2.0 * self.angle_rand - self.angle_rand;
+                                let rand =
+                                    rng.random::<f32>() * 2.0 * self.angle_rand - self.angle_rand;
                                 turtle.rotate(self.angle + rand);
                             }
                             '-' => {
-                                let rand = rng.random::<f32>() * 2.0 * self.angle_rand - self.angle_rand;
+                                let rand =
+                                    rng.random::<f32>() * 2.0 * self.angle_rand - self.angle_rand;
                                 turtle.rotate(-self.angle + rand);
                             }
                             '[' => {
@@ -104,7 +112,7 @@ impl LSystemUi {
         self.length_seed = random::<u64>();
     }
 
-    fn create_branch(line: &Vec<(Pos2, f32)>, colour: Color32) -> Vec<Shape> {
+    fn create_branch(line: &[(Pos2, f32)], colour: Color32) -> Vec<Shape> {
         let mut shapes = vec![];
         let branch_len = line.len() - 1;
         for i in 0..branch_len {
@@ -140,7 +148,13 @@ impl LSystemUi {
                 .collect::<Vec<_>>();
 
             let scalar = (self.lines.len() - i) as f32 * 64.0 / self.lines.len() as f32;
-            let branch = Self::create_branch(&point_widths, Color32::blend(self.color, Color32::from_rgba_premultiplied(0, 0, 0, scalar as u8)));
+            let branch = Self::create_branch(
+                &point_widths,
+                Color32::blend(
+                    self.color,
+                    Color32::from_rgba_premultiplied(0, 0, 0, scalar as u8),
+                ),
+            );
             painter.extend(branch);
         }
 
@@ -163,13 +177,16 @@ impl LSystemUi {
         egui::Slider::new(&mut self.system, 0..=3)
             .text("System")
             .ui(ui);
-        egui::Slider::new(&mut self.width_falloff, 0.0..=2.0).drag_value_speed(0.001)
+        egui::Slider::new(&mut self.width_falloff, 0.0..=2.0)
+            .drag_value_speed(0.001)
             .text("Width Falloff")
             .ui(ui);
-        egui::Slider::new(&mut self.base_width, 1.0..=30.0).drag_value_speed(0.001)
+        egui::Slider::new(&mut self.base_width, 1.0..=30.0)
+            .drag_value_speed(0.001)
             .text("Base Width")
             .ui(ui);
-        egui::Slider::new(&mut self.min_width, 0.5..=30.0).drag_value_speed(0.001)
+        egui::Slider::new(&mut self.min_width, 0.5..=30.0)
+            .drag_value_speed(0.001)
             .text("Min Width")
             .ui(ui);
         if ui.button("Randomise").clicked() {
@@ -270,13 +287,17 @@ impl GranularUi {
 pub struct DelayUi {
     params: DelayParams,
     sender: Sender<DelayParams>,
+    fb_params: FeedbackParams,
+    fb_sender: Sender<FeedbackParams>,
 }
 
 impl DelayUi {
-    pub fn new(sender: Sender<DelayParams>) -> Self {
+    pub fn new(sender: Sender<DelayParams>, fb_sender: Sender<FeedbackParams>) -> Self {
         Self {
             params: Default::default(),
             sender,
+            fb_params: Default::default(),
+            fb_sender,
         }
     }
 
@@ -295,10 +316,33 @@ impl DelayUi {
                 .text("Right Time")
                 .ui(ui);
 
+            let drive = egui::Slider::new(&mut self.fb_params.drive, 0.01..=2.00)
+                .text("Drive")
+                .ui(ui);
+
+            egui::ComboBox::from_label("Saturation Circuit")
+                .selected_text(format!("{:?}", self.fb_params.mode))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut self.fb_params.mode, SaturationMode::Tape, "Tape");
+                    ui.selectable_value(&mut self.fb_params.mode, SaturationMode::Tube, "Tube");
+                    ui.selectable_value(
+                        &mut self.fb_params.mode,
+                        SaturationMode::Transistor,
+                        "Transistor",
+                    );
+                });
+
             if ui.button("Bypass").clicked() {
                 self.params.bypass = !self.params.bypass;
                 self.sender
                     .send(self.params.clone())
+                    .expect("Failed to send params")
+            }
+
+            if ui.button("Saturate").clicked() {
+                self.fb_params.saturate = !self.fb_params.saturate;
+                self.fb_sender
+                    .send(self.fb_params.clone())
                     .expect("Failed to send params")
             }
 
@@ -312,6 +356,12 @@ impl DelayUi {
             if mix.changed() | feedback.changed() | time_l.changed() | time_r.changed() {
                 self.sender
                     .send(self.params.clone())
+                    .expect("Failed to send params");
+            }
+
+            if drive.changed() {
+                self.fb_sender
+                    .send(self.fb_params.clone())
                     .expect("Failed to send params");
             }
         });

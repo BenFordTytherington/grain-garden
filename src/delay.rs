@@ -1,4 +1,5 @@
 use crate::dsp::StereoFrame;
+use crate::saturation::{Saturater, SaturationMode};
 use std::sync::mpsc::Receiver;
 
 #[derive(Debug)]
@@ -61,9 +62,13 @@ impl DelayLine {
 pub struct StereoDelay {
     dl_left: DelayLine,
     dl_right: DelayLine,
+    sat_l: Saturater,
+    sat_r: Saturater,
     sr: usize,
     params: DelayParams,
     params_receiver: Receiver<DelayParams>,
+    feedback_params: FeedbackParams, // Parameters for the effects inside the fb loop
+    feedback_params_receiver: Receiver<FeedbackParams>,
 }
 
 impl StereoDelay {
@@ -74,12 +79,15 @@ impl StereoDelay {
         feedback: f32,
         mix: f32,
         params_receiver: Receiver<DelayParams>,
+        fb_receiver: Receiver<FeedbackParams>,
     ) -> Self {
         let time_samples_l = (time_l * sr as f32) as usize;
         let time_samples_r = (time_r * sr as f32) as usize;
         Self {
             dl_left: DelayLine::new(time_samples_l, 44000 * 6),
             dl_right: DelayLine::new(time_samples_r, 44000 * 6),
+            sat_l: Saturater::new(0.7, SaturationMode::Tape),
+            sat_r: Saturater::new(0.7, SaturationMode::Tape),
             sr,
             params: DelayParams {
                 feedback,
@@ -90,11 +98,14 @@ impl StereoDelay {
                 pitch: false,
             },
             params_receiver,
+            feedback_params: Default::default(),
+            feedback_params_receiver: fb_receiver,
         }
     }
 
     pub fn update_params(&mut self) {
         if let Ok(params) = self.params_receiver.try_recv() {
+            println!("Delay received params: \n{:?}", self.params);
             self.params = params;
             let l_time = (self.params.time_l * self.sr as f32) as usize;
             let r_time = (self.params.time_r * self.sr as f32) as usize;
@@ -106,14 +117,27 @@ impl StereoDelay {
                 self.dl_right.set_time(r_time);
             }
         }
+        if let Ok(params) = self.feedback_params_receiver.try_recv() {
+            if self.feedback_params.mode != params.mode {
+                self.sat_l.set_mode(&params.mode);
+                self.sat_r.set_mode(&params.mode);
+            }
+            self.feedback_params = params;
+        }
     }
 
     pub fn process(&mut self, sample: StereoFrame) -> StereoFrame {
         self.update_params();
 
         if !self.params.bypass {
-            let wet_l = self.dl_left.read();
-            let wet_r = self.dl_right.read();
+            // Process read, including saturation
+            let mut wet_l = self.dl_left.read();
+            let mut wet_r = self.dl_right.read();
+            if self.feedback_params.saturate {
+                // Scaling to ensure feedback doesn't exceed its limit
+                wet_l = 0.99 * self.sat_l.process(wet_l);
+                wet_r = 0.99 * self.sat_r.process(wet_r);
+            }
 
             self.dl_left
                 .write(sample.0 + (wet_l * self.params.feedback));
@@ -150,6 +174,23 @@ impl Default for DelayParams {
             time_r: 2.0,
             bypass: true,
             pitch: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FeedbackParams {
+    pub drive: f32,
+    pub saturate: bool,
+    pub mode: SaturationMode,
+}
+
+impl Default for FeedbackParams {
+    fn default() -> Self {
+        Self {
+            drive: 0.7,
+            saturate: false,
+            mode: SaturationMode::Tape,
         }
     }
 }
