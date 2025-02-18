@@ -57,7 +57,7 @@ impl Default for GranularParams {
             gain: 0.7,
             start: 0,
             scan: None,
-            file: PathBuf::from("handpan.wav"),
+            file: PathBuf::from("assets/audio/handpan.wav"),
         }
     }
 }

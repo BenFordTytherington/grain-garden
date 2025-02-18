@@ -10,12 +10,11 @@ use crate::dsp::{interleave, StereoFrame};
 use crate::grain::GranularEngine;
 use crate::lsystem::LSystem;
 use crate::ui::{DelayUi, GranularUi, LSystemUi};
-use egui::{Color32, Id, RichText, Visuals, Widget};
+use egui::{CentralPanel, Color32, Context, Id, RichText, SidePanel, TopBottomPanel, Visuals, Widget};
 use rodio::buffer::SamplesBuffer;
 use rodio::{OutputStream, Sink};
 use std::sync::mpsc::channel;
-use eframe::epaint::{CornerRadius, FontFamily};
-use egui::FontSelection::FontId;
+use eframe::epaint::FontFamily;
 
 struct App {
     granular_ui: GranularUi,
@@ -65,30 +64,28 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         // Redraws all the Ui elements
-        egui::TopBottomPanel::top(Id::new("grain_controls"))
+        TopBottomPanel::top(Id::new("grain_controls"))
             .resizable(true)
             .min_height(100.0)
             .max_height(200.0)
             .show(ctx, |ui| self.granular_ui.ui(ui));
 
-        egui::SidePanel::left(Id::new("delay_controls"))
+        SidePanel::left(Id::new("delay_controls"))
             .resizable(true)
             .show(ctx, |ui| {
-                ui.heading("Delay Controls");
                 self.delay_ui.ui(ui);
             });
 
-        egui::SidePanel::right(Id::new("plant_controls"))
+        SidePanel::right(Id::new("plant_controls"))
             .resizable(true)
             .show(ctx, |ui| {
-                ui.heading("Plant Controls");
                 self.lsystem_ui.plant_ui(ui);
             });
 
         // Draw plant last so it occupies remaining screenspace
-        egui::CentralPanel::default().show(ctx, |ui| {
+        CentralPanel::default().show(ctx, |ui| {
             ui.vertical_centered(|ui| {
                 ui.label(
                     RichText::new("Grain Garden")
@@ -109,7 +106,7 @@ fn main() -> eframe::Result {
 
     // Init granular engine
     let mut granny = GranularEngine::new(
-        "handpan.wav",
+        "assets/audio/handpan.wav",
         param_receive,
         gate_receive,
         delay_receive,
