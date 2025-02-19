@@ -1,12 +1,12 @@
 mod delay;
 mod dsp;
-mod grain;
+mod granular;
 mod lsystem;
 mod saturation;
 mod ui;
 
 use crate::dsp::{interleave, StereoFrame};
-use crate::grain::GranularEngine;
+use crate::granular::GranularEngine;
 use crate::lsystem::LSystem;
 use crate::ui::{DelayUi, GranularUi, LSystemUi};
 use eframe::epaint::FontFamily;
@@ -121,11 +121,13 @@ fn main() -> eframe::Result {
     let sink = Sink::try_new(&stream_handle).unwrap();
 
     // Start audio thread
+    // This could potentially be optimised somehow by implementing Source and Sample for my objects
+    // The magic number 16 just seems to reduce pops and clicks by not starving the buffer
     std::thread::spawn(move || {
-        let mut buffer: Vec<StereoFrame> = vec![StereoFrame::new(0.0); 1024];
+        let mut buffer: Vec<StereoFrame> = vec![StereoFrame::new(0.0); 512];
         loop {
             // Exit current loop early if the sink has enough samples to play
-            if sink.len() >= 2 {
+            if sink.len() >= 16 {
                 continue;
             }
 

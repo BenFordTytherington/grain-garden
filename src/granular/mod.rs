@@ -1,16 +1,16 @@
+mod grain;
+mod scheduler;
+
 use crate::delay::{DelayParams, FeedbackParams, StereoDelay};
 use crate::dsp::StereoFrame;
+use crate::granular::grain::Grain;
 use rand::random;
 use rodio::{Decoder, Source};
-use std::f32::consts::PI;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 
-// TODO Granular engine now returns a buffer of samples
-// No need for receivers anymore?? as it can be directly modified by GUI in main thread
-// Delay needs to be extracted
 #[derive(Debug)]
 pub struct GranularEngine {
     path: PathBuf,
@@ -24,15 +24,6 @@ pub struct GranularEngine {
     sr: u32,
     spawn_timer: usize,
     scan: bool,
-}
-
-#[derive(Debug)]
-pub struct Grain {
-    t: usize,
-    length: usize,
-    start: usize,
-    pan: f32,
-    finished: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -62,59 +53,6 @@ impl Default for GranularParams {
     }
 }
 
-impl Grain {
-    pub fn new(length: usize, start: usize, pan: f32) -> Self {
-        Self {
-            t: 0,
-            length,
-            start,
-            pan,
-            finished: false,
-        }
-    }
-}
-
-impl Default for Grain {
-    fn default() -> Self {
-        Self {
-            t: 0,
-            length: 44000,
-            start: 0,
-            pan: 0.0,
-            finished: false,
-        }
-    }
-}
-
-pub fn window(n: usize, t: usize) -> f32 {
-    0.5 - 0.5 * (2.0 * PI * t as f32 / n as f32).cos()
-}
-
-// linear Envelope with t from 0 to 1
-pub fn ad(t: f32, m: f32) -> f32 {
-    if t <= m {
-        t / m
-    } else {
-        (t - 1.0) / (m - 1.0)
-    }
-}
-
-pub fn exp(t: f32, m: f32, c1: f32, c2: f32) -> f32 {
-    // Sub in linear envelope if coeffs are too small
-    if (c1.abs() <= 0.01) | (c2.abs() <= 0.01) {
-        ad(t, m)
-    } else if t <= m {
-        ((-c1 * t).exp() - 1.0) / ((-c1 * m).exp() - 1.0)
-    } else {
-        ((c2 * (t - 1.0)).exp() - 1.0) / ((c2 * (m - 1.0)).exp() - 1.0)
-    }
-}
-
-pub fn env(n: usize, t: usize, m: f32) -> f32 {
-    let t_norm = t as f32 / n as f32;
-    exp(t_norm, m, -5.0, -5.0)
-}
-
 impl GranularEngine {
     pub fn new(
         path: &str,
@@ -126,7 +64,7 @@ impl GranularEngine {
         Self {
             path: PathBuf::from(path),
             samples: vec![],
-            grains: Vec::with_capacity(64), // Init with 64 grains
+            grains: (0..64).map(|_| Grain::finished()).collect(), // Init with 64 grains
             params: Default::default(),
             param_rcvr,
             gate: true,
@@ -210,20 +148,7 @@ impl GranularEngine {
 
         // Read grains even if gate is not pressed, for smooth decay
         for grain in &mut self.grains {
-            let read_pos = grain.start + grain.t;
-            let out = &self.samples[read_pos % self.samples.len()];
-
-            let pan = grain.pan;
-
-            grain.t += 2;
-            if grain.t >= grain.length {
-                grain.finished = true;
-            };
-            let windowed = out.scale(window(grain.length, grain.t));
-            dry += StereoFrame(
-                (1.0 - pan) * windowed.0 * 0.5,
-                (1.0 + pan) * windowed.1 * 0.5,
-            );
+            dry += grain.read(&self.samples);
         }
 
         self.delay.process(dry).scale(self.params.gain)

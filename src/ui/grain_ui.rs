@@ -1,4 +1,4 @@
-use crate::grain::GranularParams;
+use crate::granular::GranularParams;
 use crate::ui::{call_on_change, send_params};
 use egui::{Slider, Ui, Widget};
 use std::sync::mpsc::Sender;
