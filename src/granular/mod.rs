@@ -20,7 +20,6 @@ pub struct GranularEngine {
     param_rcvr: Receiver<GranularParams>,
     gate: bool,
     gate_rcvr: Receiver<bool>,
-    delay: StereoDelay,
     sr: u32,
     spawn_timer: usize,
     scan: bool,
@@ -58,8 +57,6 @@ impl GranularEngine {
         path: &str,
         param_rcvr: Receiver<GranularParams>,
         gate_rcvr: Receiver<bool>,
-        delay_rcvr: Receiver<DelayParams>,
-        fb_rcvr: Receiver<FeedbackParams>,
     ) -> Self {
         Self {
             path: PathBuf::from(path),
@@ -69,7 +66,6 @@ impl GranularEngine {
             param_rcvr,
             gate: true,
             gate_rcvr,
-            delay: StereoDelay::new(2.45625, 1.53312, 44000, 0.2, 0.5, delay_rcvr, fb_rcvr),
             sr: 0,
             spawn_timer: 44000,
             scan: false,
@@ -151,7 +147,7 @@ impl GranularEngine {
             dry += grain.read(&self.samples);
         }
 
-        self.delay.process(dry).scale(self.params.gain * 1.2 / self.grains.len().max(1) as f32)
+        dry.scale(self.params.gain * 1.2 / self.grains.len().max(1) as f32)
     }
 
     pub fn process_block(&mut self, buf: &mut [StereoFrame]) {

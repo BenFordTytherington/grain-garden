@@ -153,6 +153,12 @@ impl StereoDelay {
             sample
         }
     }
+
+    pub fn process_block(&mut self, buf: &mut [StereoFrame]) {
+        for sample in buf {
+            *sample = self.process(*sample);
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -15,6 +15,7 @@ use rodio::buffer::SamplesBuffer;
 use rodio::{OutputStream, Sink};
 use std::sync::mpsc::channel;
 use std::sync::Arc;
+use crate::delay::StereoDelay;
 
 struct App {
     granular_ui: GranularUi,
@@ -111,11 +112,11 @@ fn main() -> eframe::Result {
         "assets/audio/handpan.wav",
         param_receive,
         gate_receive,
-        delay_receive,
-        fb_receive,
     );
     granny.init();
     let sample_len = granny.buffer_size();
+
+    let mut delay = StereoDelay::new(2.45625, 1.53312, 44000, 0.2, 0.5, delay_receive, fb_receive);
 
     let (_stream, stream_handle) = OutputStream::try_default().unwrap();
     let sink = Sink::try_new(&stream_handle).unwrap();
@@ -132,6 +133,7 @@ fn main() -> eframe::Result {
             }
 
             granny.process_block(buffer.as_mut_slice());
+            delay.process_block(buffer.as_mut_slice());
             let output: Vec<f32> = interleave(buffer.as_slice());
 
             // Play the output buffer
