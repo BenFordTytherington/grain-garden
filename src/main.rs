@@ -5,6 +5,7 @@ mod lsystem;
 mod saturation;
 mod ui;
 
+use crate::delay::StereoDelay;
 use crate::dsp::{interleave, StereoFrame};
 use crate::granular::GranularEngine;
 use crate::lsystem::LSystem;
@@ -15,7 +16,6 @@ use rodio::buffer::SamplesBuffer;
 use rodio::{OutputStream, Sink};
 use std::sync::mpsc::channel;
 use std::sync::Arc;
-use crate::delay::StereoDelay;
 
 struct App {
     granular_ui: GranularUi,
@@ -108,11 +108,7 @@ fn main() -> eframe::Result {
     let (fb_send, fb_receive) = channel();
 
     // Init granular engine
-    let mut granny = GranularEngine::new(
-        "assets/audio/handpan.wav",
-        param_receive,
-        gate_receive,
-    );
+    let mut granny = GranularEngine::new("assets/audio/handpan.wav", param_receive, gate_receive);
     granny.init();
     let sample_len = granny.buffer_size();
 
@@ -143,14 +139,14 @@ fn main() -> eframe::Result {
 
     // Some L-systems, and iterating an aesthetic (and computable) amount
     let mut systems = vec![
-        LSystem::new("x", vec!["x->f+[[x]-x]-f[-fx]+x", "f->ff"]),
-        LSystem::new("x", vec!["x->f-[[x]+x]+f[+fx]-x", "f->ff"]),
-        LSystem::new("x", vec!["x->f[+x][-x]fx", "f->ff"]),
-        LSystem::new("x", vec!["x->f[-x]f[+x]-x", "f->ff"]),
+        LSystem::new("x", vec!["x->f+[[x]-l]-f[-fx]+l", "f->ff"]),
+        LSystem::new("x", vec!["x->f-[[+l]+x]+f[+fx]-x", "f->ff"]),
+        LSystem::new("x", vec!["x->f[+x][-l]fx", "f->ff"]),
+        LSystem::new("x", vec!["x->f[-x]f[+x]--l", "f->ff"]),
     ];
     systems[0].iterate(6);
     systems[1].iterate(6);
-    systems[2].iterate(9);
+    systems[2].iterate(7);
     systems[3].iterate(7);
 
     // Create Ui widgets

@@ -1,7 +1,6 @@
 mod grain;
 mod scheduler;
 
-use crate::delay::{DelayParams, FeedbackParams, StereoDelay};
 use crate::dsp::StereoFrame;
 use crate::granular::grain::Grain;
 use rand::random;

@@ -29,6 +29,11 @@ impl LSystem {
         rules.iter().for_each(|rule| {
             let components: Vec<&str> = rule.split("->").take(2).collect();
             let key = components[0].chars().collect::<Vec<_>>()[0];
+            if key == 'x' {
+                // X and L should have the same rule,
+                // as they are treated the same, except for generating leaves
+                rule_map.insert('l', components[1].to_string());
+            }
             rule_map.insert(key, components[1].to_string());
         });
         Self {
@@ -44,7 +49,8 @@ impl LSystem {
         let mut vec = vec![];
         let mut out = "".to_string();
         let mut occurrences = 1;
-        let mut iter = self.result.chars().filter(|c| *c != 'x');
+        let mut iter = self.result.chars();
+        // let mut iter = self.result.chars().filter(|c| *c != 'x');
         let mut last = iter.next().expect("No characters to encode");
 
         for c in iter {
@@ -102,6 +108,10 @@ impl Turtle {
     // Returns a position and a width
     pub fn get(&self) -> (Pos2, f32) {
         (self.pos, self.width)
+    }
+
+    pub fn angle(&self) -> f32 {
+        self.angle
     }
 
     pub fn rotate(&mut self, angle: f32) {

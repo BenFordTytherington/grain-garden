@@ -21,14 +21,6 @@ impl Grain {
         }
     }
 
-    pub fn reinit(&mut self, length: usize, start: usize, pan: f32) {
-        self.length = length;
-        self.start = start;
-        self.pan = pan;
-        self.t = 0;
-        self.finished = false;
-    }
-
     pub fn finished() -> Self {
         Self {
             finished: true,
