@@ -62,7 +62,7 @@ impl GranularUi {
                 call_on_change(|| self.update_params(), &[start, length, pan])
             });
             ui.horizontal(|ui| {
-                let density = Slider::new(&mut self.params.grain_density, 2000..=44000)
+                let density = Slider::new(&mut self.params.grain_density, 500..=44000)
                     .text("Density")
                     .ui(ui);
                 let spread = Slider::new(&mut self.params.grain_spread, 0.0..=1.0)

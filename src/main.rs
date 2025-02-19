@@ -127,7 +127,7 @@ fn main() -> eframe::Result {
         let mut buffer: Vec<StereoFrame> = vec![StereoFrame::new(0.0); 512];
         loop {
             // Exit current loop early if the sink has enough samples to play
-            if sink.len() >= 16 {
+            if sink.len() >= 8 {
                 continue;
             }
 

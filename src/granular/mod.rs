@@ -151,7 +151,7 @@ impl GranularEngine {
             dry += grain.read(&self.samples);
         }
 
-        self.delay.process(dry).scale(self.params.gain)
+        self.delay.process(dry).scale(self.params.gain * 1.2 / self.grains.len().max(1) as f32)
     }
 
     pub fn process_block(&mut self, buf: &mut [StereoFrame]) {
