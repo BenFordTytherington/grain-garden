@@ -168,9 +168,18 @@ impl LSystemUi {
         let mut shapes = vec![];
         let branch_len = line.len() - 1;
         for i in 0..(branch_len) {
-            let (first, width) = line[i];
-            let (second, _) = line[i + 1];
-            shapes.push(Shape::line(vec![first, second], Stroke::new(width, colour)));
+            let (first, width1) = line[i];
+            let (second, width2) = line[i + 1];
+
+            let perp = Vec2::from(second - first).rot90().normalized();
+            let points = vec![
+                pos2(first.x - perp.x * width1 / 2.0, first.y - perp.y * width1 / 2.0),
+                pos2(second.x - perp.x * width2 / 2.0, second.y - perp.y * width2 / 2.0),
+                pos2(second.x + perp.x * width2 / 2.0, second.y + perp.y * width2 / 2.0),
+                pos2(first.x + perp.x * width1 / 2.0, first.y + perp.y * width1 / 2.0),
+            ];
+            shapes.push(Shape::convex_polygon(points, colour, Stroke::NONE))
+
         }
 
         shapes
@@ -286,7 +295,7 @@ impl LSystemUi {
         Slider::new(&mut self.length_rand, 0.0..=2.0)
             .text("Length randomise")
             .ui(ui);
-        Slider::new(&mut self.system, 0..=3).text("System").ui(ui);
+        Slider::new(&mut self.system, 0..=self.systems.len()-1).text("System").ui(ui);
         Slider::new(&mut self.width_falloff, 0.0..=2.0)
             .drag_value_speed(0.001)
             .text("Width Falloff")

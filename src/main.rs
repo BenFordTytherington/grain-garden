@@ -141,13 +141,11 @@ fn main() -> eframe::Result {
     let mut systems = vec![
         LSystem::new("x", vec!["x->f+[[x]-l]-f[-fx]+l", "f->ff"]),
         LSystem::new("x", vec!["x->f-[[+l]+x]+f[+fx]-x", "f->ff"]),
-        LSystem::new("x", vec!["x->f[+x][-l]fx", "f->ff"]),
         LSystem::new("x", vec!["x->f[-x]f[+x]--l", "f->ff"]),
     ];
     systems[0].iterate(6);
     systems[1].iterate(6);
     systems[2].iterate(7);
-    systems[3].iterate(7);
 
     // Create Ui widgets
     let granular_ui = GranularUi::new(param_send, gate_send, sample_len);
