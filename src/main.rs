@@ -14,6 +14,7 @@ use eframe::epaint::FontFamily;
 use egui::{CentralPanel, Color32, Context, Id, RichText, SidePanel, TopBottomPanel, Visuals};
 use rodio::buffer::SamplesBuffer;
 use rodio::{OutputStream, Sink};
+use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::sync::Arc;
 
@@ -82,10 +83,12 @@ impl eframe::App for App {
         SidePanel::right(Id::new("plant_controls"))
             .resizable(true)
             .show(ctx, |ui| {
-                self.lsystem_ui.plant_ui(ui);
+                ui.vertical_centered(|ui| {
+                    self.lsystem_ui.plant_ui(ui);
+                })
             });
 
-        // Draw plant last so it occupies remaining screenspace
+        // Draw plant last so it occupies remaining screen space
         CentralPanel::default().show(ctx, |ui| {
             ui.vertical_centered(|ui| {
                 ui.label(
@@ -106,9 +109,15 @@ fn main() -> eframe::Result {
     let (gate_send, gate_receive) = channel();
     let (delay_send, delay_receive) = channel();
     let (fb_send, fb_receive) = channel();
+    let (seq_send, seq_receive) = channel();
 
     // Init granular engine
-    let mut granny = GranularEngine::new("assets/audio/handpan.wav", param_receive, gate_receive);
+    let mut granny = GranularEngine::new(
+        PathBuf::from("assets/audio/handpan_trimmed.wav"),
+        param_receive,
+        gate_receive,
+        seq_receive,
+    );
     granny.init();
     let sample_len = granny.buffer_size();
 
@@ -119,7 +128,7 @@ fn main() -> eframe::Result {
 
     // Start audio thread
     // This could potentially be optimised somehow by implementing Source and Sample for my objects
-    // The magic number 16 just seems to reduce pops and clicks by not starving the buffer
+    // The magic number `8` just seems to reduce pops and clicks by not starving the buffer
     std::thread::spawn(move || {
         let mut buffer: Vec<StereoFrame> = vec![StereoFrame::new(0.0); 512];
         loop {
@@ -141,7 +150,7 @@ fn main() -> eframe::Result {
     let mut systems = vec![
         LSystem::new("x", vec!["x->f+[[x]-l]-f[-fx]+l", "f->ff"]),
         LSystem::new("x", vec!["x->f-[[+l]+x]+f[+fx]-x", "f->ff"]),
-        LSystem::new("x", vec!["x->f[-x]f[+x]--l", "f->ff"]),
+        LSystem::new("x", vec!["x->f[-x]f[+x]-[+x]-l", "f->ff"]),
     ];
     systems[0].iterate(6);
     systems[1].iterate(6);
@@ -150,7 +159,7 @@ fn main() -> eframe::Result {
     // Create Ui widgets
     let granular_ui = GranularUi::new(param_send, gate_send, sample_len);
     let delay_ui = DelayUi::new(delay_send, fb_send);
-    let lsystem_ui = LSystemUi::new(systems);
+    let lsystem_ui = LSystemUi::new(systems, seq_send);
 
     // Run the eframe app
     let native_options = eframe::NativeOptions::default();

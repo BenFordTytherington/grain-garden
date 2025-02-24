@@ -1,5 +1,4 @@
 use crate::lsystem::{LSystem, Turtle};
-use eframe::emath;
 use eframe::emath::{pos2, Pos2, Rect, RectTransform, Vec2};
 use eframe::epaint::{Color32, Shape, Stroke};
 use egui::{Response, Sense, Slider, Ui, Widget};
@@ -8,6 +7,7 @@ use rand::{random, Rng};
 use rand_core::SeedableRng;
 use rand_pcg::{Mcg128Xsl64, Pcg64Mcg};
 use std::f32::consts::PI;
+use std::sync::mpsc::Sender;
 
 pub struct LSystemUi {
     pub colour: Color32,
@@ -30,15 +30,17 @@ pub struct LSystemUi {
     pub leaf_bias: f32,
     pub leaf_width: f32,
     pub leaf_rand: f32,
+    sender: Sender<Vec<Pos2>>,
 }
 
 #[derive(Default)]
 struct PlantData {
     pub shapes: Vec<Vec<Shape>>,
+    pub branch_points: Vec<Pos2>,
 }
 
 impl LSystemUi {
-    pub fn new(systems: Vec<LSystem>) -> Self {
+    pub fn new(systems: Vec<LSystem>, sender: Sender<Vec<Pos2>>) -> Self {
         Self {
             colour: Color32::from_hex("#63413f").unwrap(),
             leaf_colours: vec![
@@ -64,6 +66,7 @@ impl LSystemUi {
             leaf_bias: -0.3,
             leaf_width: 6.0,
             leaf_rand: 0.0,
+            sender,
         }
     }
 
@@ -82,6 +85,7 @@ impl LSystemUi {
         let mut turtle = Turtle::new(base_width, min_width, width_falloff);
         let mut shapes = vec![];
         let mut current_line: Vec<(Pos2, f32)> = vec![(pos2(0.0, 0.0), base_width)];
+        let mut branch_points = vec![];
 
         let mut rng = Pcg64Mcg::seed_from_u64(self.angle_seed);
 
@@ -99,10 +103,7 @@ impl LSystemUi {
                             .map(|(point, width)| (transform * self.map_coord(*point), *width))
                             .collect::<Vec<_>>();
 
-                        let branch = Self::create_branch(
-                            &point_widths,
-                            self.colour
-                        );
+                        let branch = Self::create_branch(&point_widths, self.colour);
                         shapes.push(branch);
                         current_line = vec![turtle.get()]
                     } else {
@@ -136,6 +137,7 @@ impl LSystemUi {
                             }
                             '[' => {
                                 turtle.push();
+                                branch_points.push(self.map_coord(turtle.get().0));
                             }
                             s => panic!("Invalid symbol: {s} found in L-System!"),
                         };
@@ -147,21 +149,50 @@ impl LSystemUi {
                     .map(|(point, width)| (transform * self.map_coord(*point), *width))
                     .collect::<Vec<_>>();
 
-                let branch = Self::create_branch(
-                    &point_widths,
-                    self.colour
-                );
+                let branch = Self::create_branch(&point_widths, self.colour);
                 shapes.push(branch);
             }
         }
 
-        PlantData { shapes }
+        PlantData {
+            shapes,
+            branch_points,
+        }
     }
 
     pub fn randomise_seed(&mut self) {
         self.angle_seed = random::<u64>();
         self.length_seed = random::<u64>();
         self.leaf_seed = random::<u64>();
+    }
+
+    fn create_trapezium(
+        start: Pos2,
+        end: Pos2,
+        start_width: f32,
+        end_width: f32,
+        colour: Color32,
+    ) -> Shape {
+        let perp = (end - start).rot90().normalized();
+        let points = vec![
+            pos2(
+                start.x - perp.x * start_width / 2.0,
+                start.y - perp.y * start_width / 2.0,
+            ),
+            pos2(
+                end.x - perp.x * end_width / 2.0,
+                end.y - perp.y * end_width / 2.0,
+            ),
+            pos2(
+                end.x + perp.x * end_width / 2.0,
+                end.y + perp.y * end_width / 2.0,
+            ),
+            pos2(
+                start.x + perp.x * start_width / 2.0,
+                start.y + perp.y * start_width / 2.0,
+            ),
+        ];
+        Shape::convex_polygon(points, colour, Stroke::NONE)
     }
 
     fn create_branch(line: &[(Pos2, f32)], colour: Color32) -> Vec<Shape> {
@@ -171,15 +202,9 @@ impl LSystemUi {
             let (first, width1) = line[i];
             let (second, width2) = line[i + 1];
 
-            let perp = Vec2::from(second - first).rot90().normalized();
-            let points = vec![
-                pos2(first.x - perp.x * width1 / 2.0, first.y - perp.y * width1 / 2.0),
-                pos2(second.x - perp.x * width2 / 2.0, second.y - perp.y * width2 / 2.0),
-                pos2(second.x + perp.x * width2 / 2.0, second.y + perp.y * width2 / 2.0),
-                pos2(first.x + perp.x * width1 / 2.0, first.y + perp.y * width1 / 2.0),
-            ];
-            shapes.push(Shape::convex_polygon(points, colour, Stroke::NONE))
-
+            shapes.push(Self::create_trapezium(
+                first, second, width1, width2, colour,
+            ));
         }
 
         shapes
@@ -214,6 +239,7 @@ impl LSystemUi {
             offset
         };
 
+        // Functions composed for leaf shape
         let g = |x: f32| ((offset * x).exp() - 1.0) / (offset.exp() - 1.0);
         let f = |x: f32| width * (PI * g(x / len)).sin();
 
@@ -222,18 +248,20 @@ impl LSystemUi {
 
         for i in 0..=NUM_POINTS {
             let x = i as f32 * len / NUM_POINTS as f32;
-
             let y = f(x);
 
             side.push(pos2(x, y));
             shape.push(pos2(x, y));
         }
+
+        // Create mirror side of leaf
         let mut iter = side.iter().rev();
-        iter.next(); // Removing last element, as it will be duplicated
+        iter.next(); // Removing last element, or it will be duplicated
         for point in iter {
             shape.push(pos2(point.x, -point.y))
         }
 
+        // Rotation by standard rotation matrix
         let rotate_point = |p: Pos2| {
             pos2(
                 (p.x * angle.cos()) - (p.y * angle.sin()),
@@ -250,6 +278,7 @@ impl LSystemUi {
             .leaf_colours
             .choose(rng)
             .expect("Colour Slice is empty!");
+
         let colour = base_colour.gamma_multiply_u8(120 + colour_rand as u8);
         let mut leaf = Shape::convex_polygon(rotated, colour, Stroke::NONE);
         leaf.translate(Vec2::new(pos.x, pos.y));
@@ -257,18 +286,17 @@ impl LSystemUi {
     }
 
     pub fn plant_window(&mut self, ui: &mut Ui) -> Response {
-        // Allocate space for our widget
+        // Allocate space for plant window
         let (response, painter) =
             ui.allocate_painter(Vec2::splat(self.canvas_size), Sense::hover());
 
         painter.rect_filled(response.rect, 5.0, Color32::WHITE);
 
-        let transform = emath::RectTransform::from_to(
+        let transform = RectTransform::from_to(
             Rect::from_min_size(Pos2::ZERO, response.rect.size()),
             response.rect,
         );
 
-        // Encoded lines for 6 iteration system is a 17% reduction
         self.plant_data = self.create_plant_data(
             self.base_width,
             self.min_width,
@@ -280,6 +308,9 @@ impl LSystemUi {
             painter.extend(item.clone());
         }
 
+        self.sender
+            .send(self.plant_data.branch_points.clone())
+            .expect("Failed to send points to sequencer");
         response
     }
 
@@ -295,7 +326,9 @@ impl LSystemUi {
         Slider::new(&mut self.length_rand, 0.0..=2.0)
             .text("Length randomise")
             .ui(ui);
-        Slider::new(&mut self.system, 0..=self.systems.len()-1).text("System").ui(ui);
+        Slider::new(&mut self.system, 0..=self.systems.len() - 1)
+            .text("System")
+            .ui(ui);
         Slider::new(&mut self.width_falloff, 0.0..=2.0)
             .drag_value_speed(0.001)
             .text("Width Falloff")
