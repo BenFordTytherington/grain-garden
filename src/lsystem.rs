@@ -2,24 +2,95 @@ use eframe::emath::Pos2;
 use eframe::epaint::pos2;
 use std::collections::HashMap;
 use std::f32::consts::PI;
+use egui::TextBuffer;
+use rand::distr::weighted::WeightedIndex;
+use rand::prelude::Distribution;
+use rand::rng;
 
 // Struct representing a DOL-System, including necessary logic to iterate it
 pub struct LSystem {
     pub axiom: String,
-    pub result: String,
-    pub rules: HashMap<char, String>,
+    pub results: Vec<String>,
+    pub results_aux: Vec<String>, // Used to recompute plant while still being readable
+    pub iterations: usize,
+    pub current_iteration: usize,
+    pub rules: HashMap<char, Rule>,
+}
+
+#[derive(Clone)]
+struct Rule {
+    key: char,
+    replacements: Vec<String>,
+    probabilities: WeightedIndex<f32>
+}
+
+impl Rule {
+    pub fn new(text: &str) -> Self {
+        let components: Vec<&str> = text.split("->").take(2).collect();
+        let key = components[0].chars().collect::<Vec<_>>()[0];
+        let mut replacements = vec![];
+        let mut probabilities = vec![];
+        for rule in components[1].split(",") {
+            let splits: Vec<&str> = rule.split(":").take(2).collect();
+            let out = splits[0];
+            let prob = if let Some(prob) = splits.get(1) {
+                prob.parse::<f32>().expect("Expected a float probability")
+            } else {
+                1.0
+            };
+            replacements.push(out.to_string());
+            probabilities.push(prob);
+        }
+
+        Self {
+            key,
+            replacements,
+            probabilities: WeightedIndex::new(probabilities).expect("Invalid Probabilities!"),
+        }
+    }
 }
 
 impl LSystem {
     pub fn iterate(&mut self, n: usize) {
         for _ in 0..n {
             let mut result = String::new();
-            for c in self.result.chars() {
-                let replacement = self.rules.get(&c).cloned().unwrap_or(c.to_string());
-                result.push_str(replacement.as_str());
+            for c in self.results.last().unwrap().chars() {
+                let str = self.replace(c);
+                result.push_str(str.as_str());
             }
-            self.result = result;
+            self.iterations += 1;
+            self.current_iteration = self.iterations;
+            self.results.push(result);
         }
+    }
+
+    fn replace(&self, c: char) -> String {
+        if let Some(rule) = self.rules.get(&c) {
+            let mut rng = rng();
+            // Randomly sample the replacements using weighted index
+            rule.replacements[rule.probabilities.sample(&mut rng)].clone()
+        } else {
+            c.to_string()
+        }
+    }
+
+    pub fn iterate_aux(&mut self, n: usize) {
+        for _ in 0..n {
+            let mut result = String::new();
+            for c in self.results_aux.last().unwrap().chars() {
+                let str = self.replace(c);
+                result.push_str(str.as_str());
+            }
+            self.results_aux.push(result);
+        }
+    }
+
+    /// Recompute the stochastic generation if it exists.
+    pub fn recompute(&mut self) {
+        self.results_aux.push(self.axiom.clone());
+        self.iterate_aux(self.iterations);
+        std::mem::swap(&mut self.results, &mut self.results_aux);
+        self.results_aux.clear();
     }
 
     // Parse rules as strings into rule set
@@ -27,30 +98,37 @@ impl LSystem {
         let mut rule_map = HashMap::new();
         // TODO This is some ugly parsing, make it better
         rules.iter().for_each(|rule| {
-            let components: Vec<&str> = rule.split("->").take(2).collect();
-            let key = components[0].chars().collect::<Vec<_>>()[0];
-            if key == 'x' {
+            let rule = Rule::new(rule);
+            if rule.key == 'x' {
                 // X and L should have the same rule,
                 // as they are treated the same, except for generating leaves
-                rule_map.insert('l', components[1].to_string());
+                let mut new_rule = rule.clone();
+                new_rule.key = 'l';
+                rule_map.insert('l', new_rule);
             }
-            rule_map.insert(key, components[1].to_string());
+            rule_map.insert(rule.key, rule);
         });
         Self {
-            result: axiom.to_string(),
+            results: vec![axiom.to_string()],
             axiom: axiom.to_string(),
             rules: rule_map,
+            iterations: 0,
+            current_iteration: 0,
+            results_aux: vec![],
         }
     }
 
     // RL encoded version of string, only encoding 'f' runs.
     // Also removes x nodes, as these are ignored in drawing.
     // Encoded lines for 6 iteration system is a 17% reduction
+    // TODO! Could this parsing could be made cleaner with match?
     pub fn encoded(&self) -> Vec<String> {
         let mut vec = vec![];
         let mut out = "".to_string();
         let mut occurrences = 1;
-        let mut iter = self.result.chars().filter(|c| *c != 'x');
+        let mut iter = self.results[self.current_iteration]
+            .chars()
+            .filter(|c| *c != 'x');
         let mut last = iter.next().expect("No characters to encode");
 
         for c in iter {
@@ -71,7 +149,12 @@ impl LSystem {
             }
             last = c;
         }
-        vec.push(out);
+        // Handling the case where the string ends with a run
+        if out == *"" {
+            vec.push(occurrences.to_string());
+        } else {
+            vec.push(out);
+        }
 
         vec
     }

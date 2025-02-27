@@ -1,4 +1,5 @@
 use crate::lsystem::{LSystem, Turtle};
+use crate::plant::Plant;
 use eframe::emath::{pos2, Pos2, Rect, RectTransform, Vec2};
 use eframe::epaint::{Color32, Shape, Stroke};
 use egui::{Response, Sense, Slider, Ui, Widget};
@@ -10,11 +11,9 @@ use std::f32::consts::PI;
 use std::sync::mpsc::Sender;
 
 pub struct LSystemUi {
-    pub colour: Color32,
-    pub leaf_colours: Vec<Color32>,
     canvas_size: f32,
-    systems: Vec<LSystem>,
-    pub system: usize,
+    plants: Vec<Plant>,
+    pub current_plant: usize,
     plant_data: PlantData,
     angle_seed: u64,
     length_seed: u64,
@@ -40,17 +39,11 @@ struct PlantData {
 }
 
 impl LSystemUi {
-    pub fn new(systems: Vec<LSystem>, sender: Sender<Vec<Pos2>>) -> Self {
+    pub fn new(sender: Sender<Vec<Pos2>>) -> Self {
         Self {
-            colour: Color32::from_hex("#63413f").unwrap(),
-            leaf_colours: vec![
-                Color32::from_hex("#4d5e21").unwrap(),
-                Color32::from_hex("#374529").unwrap(),
-                Color32::from_hex("#364f33").unwrap(),
-            ],
             canvas_size: 500.0,
-            systems,
-            system: 0,
+            plants: vec![Plant::tree_1(), Plant::tree_2(), Plant::tree_3(), Plant::tree_4()],
+            current_plant: 0,
             plant_data: Default::default(),
             angle_seed: 123123123,
             length_seed: 123123123,
@@ -70,8 +63,18 @@ impl LSystemUi {
         }
     }
 
-    pub fn system(&self) -> &LSystem {
-        &self.systems[self.system]
+    // Attempt at automatically scaling up lower iterations so they are more similar in height
+    // TODO Model this with the system growth function so that it's more accurate
+    fn scaled_length(&self) -> f32 {
+        self.len * 350.0 / (4.0 * self.plant().system.current_iteration as f32).powi(2)
+    }
+
+    pub fn plant(&self) -> &Plant {
+        &self.plants[self.current_plant]
+    }
+
+    pub fn plant_mut(&mut self) -> &mut Plant {
+        &mut self.plants[self.current_plant]
     }
 
     // Create the shapes from an L-System
@@ -88,12 +91,13 @@ impl LSystemUi {
         let mut branch_points = vec![];
 
         let mut rng = Pcg64Mcg::seed_from_u64(self.angle_seed);
+        let plant = self.plant();
 
-        for block in self.system().encoded() {
+        for block in plant.system.encoded() {
             if block.chars().all(|c| c.is_ascii_digit()) {
                 let run_len = block.parse::<u32>().expect("Failed to parse run as u32") as f32;
-                let rand = rng.random::<f32>() * self.length_rand * self.len;
-                turtle.forward((self.len + rand) * run_len);
+                let rand = rng.random::<f32>() * self.length_rand * self.scaled_length();
+                turtle.forward((self.scaled_length() + rand) * run_len);
             } else {
                 for c in block.chars() {
                     if c == ']' {
@@ -103,7 +107,7 @@ impl LSystemUi {
                             .map(|(point, width)| (transform * self.map_coord(*point), *width))
                             .collect::<Vec<_>>();
 
-                        let branch = Self::create_branch(&point_widths, self.colour);
+                        let branch = Self::create_branch(&point_widths, plant.branch_colour);
                         shapes.push(branch);
                         current_line = vec![turtle.get()]
                     } else {
@@ -122,8 +126,9 @@ impl LSystemUi {
                             }
                             'x' => {}
                             'f' => {
-                                let rand = rng.random::<f32>() * self.length_rand * self.len;
-                                turtle.forward(self.len + rand);
+                                let rand =
+                                    rng.random::<f32>() * self.length_rand * self.scaled_length();
+                                turtle.forward(self.scaled_length() + rand);
                             }
                             '+' => {
                                 let rand =
@@ -149,7 +154,7 @@ impl LSystemUi {
                     .map(|(point, width)| (transform * self.map_coord(*point), *width))
                     .collect::<Vec<_>>();
 
-                let branch = Self::create_branch(&point_widths, self.colour);
+                let branch = Self::create_branch(&point_widths, plant.branch_colour);
                 shapes.push(branch);
             }
         }
@@ -160,10 +165,11 @@ impl LSystemUi {
         }
     }
 
-    pub fn randomise_seed(&mut self) {
+    pub fn randomise(&mut self) {
         self.angle_seed = random::<u64>();
         self.length_seed = random::<u64>();
         self.leaf_seed = random::<u64>();
+        self.plant_mut().system.recompute();
     }
 
     fn create_trapezium(
@@ -275,6 +281,7 @@ impl LSystemUi {
             .collect::<Vec<Pos2>>();
 
         let base_colour = self
+            .plant()
             .leaf_colours
             .choose(rng)
             .expect("Colour Slice is empty!");
@@ -326,8 +333,12 @@ impl LSystemUi {
         Slider::new(&mut self.length_rand, 0.0..=2.0)
             .text("Length randomise")
             .ui(ui);
-        Slider::new(&mut self.system, 0..=self.systems.len() - 1)
+        Slider::new(&mut self.current_plant, 0..=self.plants.len() - 1)
             .text("System")
+            .ui(ui);
+        let system = &mut self.plant_mut().system;
+        Slider::new(&mut system.current_iteration, 0..=system.iterations)
+            .text("Iterations")
             .ui(ui);
         Slider::new(&mut self.width_falloff, 0.0..=2.0)
             .drag_value_speed(0.001)
@@ -358,7 +369,7 @@ impl LSystemUi {
             .text("Leaf Rand")
             .ui(ui);
         if ui.button("Randomise").clicked() {
-            self.randomise_seed();
+            self.randomise();
         };
     }
 }

@@ -2,6 +2,7 @@ mod delay;
 mod dsp;
 mod granular;
 mod lsystem;
+mod plant;
 mod saturation;
 mod ui;
 
@@ -146,20 +147,10 @@ fn main() -> eframe::Result {
         }
     });
 
-    // Some L-systems, and iterating an aesthetic (and computable) amount
-    let mut systems = vec![
-        LSystem::new("x", vec!["x->f+[[x]-l]-f[-fx]+l", "f->ff"]),
-        LSystem::new("x", vec!["x->f-[[+l]+x]+f[+fx]-x", "f->ff"]),
-        LSystem::new("x", vec!["x->f[-x]f[+x]-[+x]-l", "f->ff"]),
-    ];
-    systems[0].iterate(6);
-    systems[1].iterate(6);
-    systems[2].iterate(7);
-
     // Create Ui widgets
     let granular_ui = GranularUi::new(param_send, gate_send, sample_len);
     let delay_ui = DelayUi::new(delay_send, fb_send);
-    let lsystem_ui = LSystemUi::new(systems, seq_send);
+    let lsystem_ui = LSystemUi::new(seq_send);
 
     // Run the eframe app
     let native_options = eframe::NativeOptions::default();
