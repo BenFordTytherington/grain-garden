@@ -1,6 +1,7 @@
 use crate::dsp::StereoFrame;
 use crate::saturation::{Saturater, SaturationMode};
 use std::sync::mpsc::Receiver;
+use crate::filters::LPFilter;
 
 #[derive(Debug)]
 pub struct DelayLine {
@@ -64,6 +65,8 @@ pub struct StereoDelay {
     dl_right: DelayLine,
     sat_l: Saturater,
     sat_r: Saturater,
+    filter_l: LPFilter,
+    filter_r: LPFilter,
     sr: usize,
     params: DelayParams,
     params_receiver: Receiver<DelayParams>,
@@ -88,6 +91,8 @@ impl StereoDelay {
             dl_right: DelayLine::new(time_samples_r, 44000 * 6),
             sat_l: Saturater::new(0.7, SaturationMode::Tape),
             sat_r: Saturater::new(0.7, SaturationMode::Tape),
+            filter_l: LPFilter::new(44000, 10000.0),
+            filter_r: LPFilter::new(44000, 10000.0),
             sr,
             params: DelayParams {
                 feedback,
@@ -118,9 +123,15 @@ impl StereoDelay {
             }
         }
         if let Ok(params) = self.feedback_params_receiver.try_recv() {
+            println!("Delay received fb params: \n{:?}", self.feedback_params);
             if self.feedback_params.mode != params.mode {
                 self.sat_l.set_mode(&params.mode);
                 self.sat_r.set_mode(&params.mode);
+            }
+            // Reduce recomputation when not necessary
+            if self.feedback_params.cutoff_freq != params.cutoff_freq {
+                self.filter_l.compute_coeffs(params.cutoff_freq);
+                self.filter_r.compute_coeffs(params.cutoff_freq);
             }
             self.feedback_params = params;
         }
@@ -130,11 +141,17 @@ impl StereoDelay {
         self.update_params();
 
         if !self.params.bypass {
-            // Process read, including saturation
+            // Process read, including saturation and filtering
             let mut wet_l = self.dl_left.read();
             let mut wet_r = self.dl_right.read();
+
+            if self.feedback_params.filter {
+                wet_l = self.filter_l.process(wet_l);
+                wet_r = self.filter_r.process(wet_r);
+            }
+
             if self.feedback_params.saturate {
-                // Scaling to ensure feedback doesn't exceed its limit
+                // Prevents feedback oscillation from saturating
                 wet_l = 0.99 * self.sat_l.process(wet_l);
                 wet_r = 0.99 * self.sat_r.process(wet_r);
             }
@@ -174,10 +191,10 @@ pub struct DelayParams {
 impl Default for DelayParams {
     fn default() -> Self {
         Self {
-            feedback: 0.5,
-            mix: 0.2,
-            time_l: 1.0,
-            time_r: 2.0,
+            feedback: 0.8,
+            mix: 0.5,
+            time_l: 0.5,
+            time_r: 0.5,
             bypass: true,
             pitch: false,
         }
@@ -187,16 +204,22 @@ impl Default for DelayParams {
 #[derive(Debug, Clone)]
 pub struct FeedbackParams {
     pub drive: f32,
+    pub hardness: f32,
     pub saturate: bool,
     pub mode: SaturationMode,
+    pub filter: bool,
+    pub cutoff_freq: f32
 }
 
 impl Default for FeedbackParams {
     fn default() -> Self {
         Self {
             drive: 0.7,
+            hardness: 0.3,
             saturate: false,
             mode: SaturationMode::Tape,
+            filter: false,
+            cutoff_freq: 10000.0,
         }
     }
 }

@@ -45,21 +45,29 @@ impl DelayUi {
                 .text("Right Time")
                 .ui(ui);
 
-            let drive = Slider::new(&mut self.fb_params.drive, 0.01..=2.00)
+            let drive = Slider::new(&mut self.fb_params.drive, 0.01..=5.00)
                 .text("Drive")
+                .ui(ui);
+
+            let hardness = Slider::new(&mut self.fb_params.hardness, 0.0..=1.0)
+                .text("Knee")
                 .ui(ui);
 
             ComboBox::from_label("Saturation Circuit")
                 .selected_text(format!("{:?}", self.fb_params.mode))
                 .show_ui(ui, |ui| {
                     ui.selectable_value(&mut self.fb_params.mode, SaturationMode::Tape, "Tape");
-                    ui.selectable_value(&mut self.fb_params.mode, SaturationMode::Tube, "Tube");
                     ui.selectable_value(
                         &mut self.fb_params.mode,
                         SaturationMode::Transistor,
                         "Transistor",
                     );
                 });
+
+            let cutoff = Slider::new(&mut self.fb_params.cutoff_freq, 200.0..=18000.0)
+                .drag_value_speed(1.0)
+                .text("Cutoff")
+                .ui(ui);
 
             if ui.button("Bypass").clicked() {
                 self.params.bypass = !self.params.bypass;
@@ -71,16 +79,18 @@ impl DelayUi {
                 self.update_fb_params();
             }
 
+            if ui.button("Filter").clicked() {
+                self.fb_params.filter = !self.fb_params.filter;
+                self.update_fb_params();
+            }
+
             if ui.button("Pitch taps").clicked() {
                 self.params.pitch = !self.params.pitch;
                 self.update_params();
             }
 
             call_on_change(|| self.update_params(), &[mix, feedback, time_l, time_r]);
-
-            if drive.changed() {
-                self.update_fb_params();
-            }
+            call_on_change(|| self.update_fb_params(), &[drive, cutoff, hardness]);
         });
     }
 }

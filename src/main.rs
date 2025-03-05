@@ -5,6 +5,7 @@ mod lsystem;
 mod plant;
 mod saturation;
 mod ui;
+mod filters;
 
 use crate::delay::StereoDelay;
 use crate::dsp::{interleave, StereoFrame};
@@ -18,6 +19,7 @@ use rodio::{OutputStream, Sink};
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::sync::Arc;
+use crate::filters::LPFilter;
 
 struct App {
     granular_ui: GranularUi,
@@ -122,7 +124,7 @@ fn main() -> eframe::Result {
     granny.init();
     let sample_len = granny.buffer_size();
 
-    let mut delay = StereoDelay::new(2.45625, 1.53312, 44000, 0.2, 0.5, delay_receive, fb_receive);
+    let mut delay = StereoDelay::new(0.5, 0.5, 44000, 0.8, 0.5, delay_receive, fb_receive);
 
     let (_stream, stream_handle) = OutputStream::try_default().unwrap();
     let sink = Sink::try_new(&stream_handle).unwrap();

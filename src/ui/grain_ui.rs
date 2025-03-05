@@ -58,7 +58,7 @@ impl GranularUi {
                     );
                 }
 
-                call_on_change(|| self.update_params(), &[start, length])
+                call_on_change(|| self.update_params(), &[start, length]);
             });
             ui.horizontal(|ui| {
                 let spread = Slider::new(&mut self.params.grain_spread, 500..=self.buf_len)
