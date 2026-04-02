@@ -1,7 +1,7 @@
 use crate::delay::{DelayParams, FeedbackParams};
 use crate::saturation::SaturationMode;
 use crate::ui::{call_on_change, send_params};
-use egui::{ComboBox, Slider, Ui, Widget};
+use egui::{Button, Color32, ComboBox, Slider, Ui, Widget};
 use std::sync::mpsc::Sender;
 
 pub struct DelayUi {
@@ -69,22 +69,34 @@ impl DelayUi {
                 .text("Cutoff")
                 .ui(ui);
 
-            if ui.button("Bypass").clicked() {
+            if ui
+                .add(Button::new("Bypass").fill(fill_from_bool(!self.params.bypass)))
+                .clicked()
+            {
                 self.params.bypass = !self.params.bypass;
                 self.update_params();
             }
 
-            if ui.button("Saturate").clicked() {
+            if ui
+                .add(Button::new("Saturate").fill(fill_from_bool(self.fb_params.saturate)))
+                .clicked()
+            {
                 self.fb_params.saturate = !self.fb_params.saturate;
                 self.update_fb_params();
             }
 
-            if ui.button("Filter").clicked() {
+            if ui
+                .add(Button::new("Filter").fill(fill_from_bool(self.fb_params.filter)))
+                .clicked()
+            {
                 self.fb_params.filter = !self.fb_params.filter;
                 self.update_fb_params();
             }
 
-            if ui.button("Pitch taps").clicked() {
+            if ui
+                .add(Button::new("Pitch taps").fill(fill_from_bool(self.params.pitch)))
+                .clicked()
+            {
                 self.params.pitch = !self.params.pitch;
                 self.update_params();
             }
@@ -92,5 +104,14 @@ impl DelayUi {
             call_on_change(|| self.update_params(), &[mix, feedback, time_l, time_r]);
             call_on_change(|| self.update_fb_params(), &[drive, cutoff, hardness]);
         });
+    }
+}
+
+// Fill from a boolean, with green for true, and red for false
+fn fill_from_bool(b: bool) -> Color32 {
+    if b {
+        Color32::DARK_GREEN
+    } else {
+        Color32::DARK_RED
     }
 }

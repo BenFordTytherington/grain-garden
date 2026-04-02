@@ -17,6 +17,8 @@ pub struct Grain {
     scale: u16,
     pub finished: bool,
     envelope_mode: EnvelopeMode,
+    envelope_sharpness: f32,
+    envelope_shape: f32,
 }
 
 impl Grain {
@@ -26,6 +28,8 @@ impl Grain {
         pan: f32,
         scale: u16,
         envelope_mode: EnvelopeMode,
+        envelope_sharpness: f32,
+        envelope_shape: f32,
     ) -> Self {
         Self {
             t: 0,
@@ -35,13 +39,20 @@ impl Grain {
             finished: false,
             scale,
             envelope_mode,
+            envelope_sharpness,
+            envelope_shape,
         }
     }
 
     pub fn env(&self) -> f32 {
         return match self.envelope_mode {
             EnvelopeMode::Smooth => window(self.length, self.t),
-            EnvelopeMode::Exp => exp(self.t as f32 / self.length as f32, 0.02, 1.0, -0.5),
+            EnvelopeMode::Exp => exp(
+                self.t as f32 / self.length as f32,
+                self.envelope_shape,
+                8.0 * (self.envelope_sharpness - 1.0),
+                8.0 * (self.envelope_sharpness - 1.0),
+            ),
         };
     }
 
@@ -79,6 +90,8 @@ impl Default for Grain {
             finished: false,
             scale: 1,
             envelope_mode: EnvelopeMode::Smooth,
+            envelope_sharpness: 0.0,
+            envelope_shape: 0.5,
         }
     }
 }

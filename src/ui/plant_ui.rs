@@ -7,6 +7,7 @@ use rand::prelude::IndexedRandom;
 use rand::{random, Rng};
 use rand_core::SeedableRng;
 use rand_pcg::{Mcg128Xsl64, Pcg64Mcg};
+use std::cmp::Ordering;
 use std::f32::consts::PI;
 use std::sync::mpsc::Sender;
 
@@ -36,13 +37,19 @@ pub struct LSystemUi {
 struct PlantData {
     pub shapes: Vec<Vec<Shape>>,
     pub branch_points: Vec<Pos2>,
+    pub leaf_points: Vec<Pos2>,
 }
 
 impl LSystemUi {
     pub fn new(sender: Sender<Vec<Pos2>>) -> Self {
         Self {
             canvas_size: 500.0,
-            plants: vec![Plant::tree_1(), Plant::tree_2(), Plant::tree_3(), Plant::tree_4()],
+            plants: vec![
+                Plant::tree_1(),
+                Plant::tree_2(),
+                Plant::tree_3(),
+                Plant::tree_4(),
+            ],
             current_plant: 0,
             plant_data: Default::default(),
             angle_seed: 123123123,
@@ -89,6 +96,7 @@ impl LSystemUi {
         let mut shapes = vec![];
         let mut current_line: Vec<(Pos2, f32)> = vec![(pos2(0.0, 0.0), base_width)];
         let mut branch_points = vec![];
+        let mut leaf_points = vec![];
 
         let mut rng = Pcg64Mcg::seed_from_u64(self.angle_seed);
         let plant = self.plant();
@@ -123,6 +131,7 @@ impl LSystemUi {
                                     &mut rng,
                                 );
                                 shapes.push(vec![leaf]);
+                                leaf_points.push(self.map_coord(turtle.get().0))
                             }
                             'x' => {}
                             'f' => {
@@ -162,6 +171,7 @@ impl LSystemUi {
         PlantData {
             shapes,
             branch_points,
+            leaf_points,
         }
     }
 
@@ -315,8 +325,14 @@ impl LSystemUi {
             painter.extend(item.clone());
         }
 
+        let mut points = self.plant_data.leaf_points.clone();
+        // Sort by y coordinate of leaves
+        points.sort_by(|p1, p2| p1.y.partial_cmp(&p2.y).unwrap_or(Ordering::Equal));
+        // let points = self.plant_data.branch_points.clone()
+
         self.sender
-            .send(self.plant_data.branch_points.clone())
+            // Try sending leaf points instead of branch points
+            .send(points)
             .expect("Failed to send points to sequencer");
         response
     }

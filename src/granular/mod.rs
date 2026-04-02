@@ -36,6 +36,8 @@ pub struct GranularParams {
     pub file: PathBuf,
     pub density: f32, // How often grains will be spawned, in hz
     pub envelope_mode: EnvelopeMode,
+    pub envelope_sharpness: f32,
+    pub envelope_shape: f32,
 }
 
 impl Default for GranularParams {
@@ -49,6 +51,8 @@ impl Default for GranularParams {
             file: PathBuf::from("assets/audio/handpan_trimmed.wav"),
             density: 1.0,
             envelope_mode: EnvelopeMode::Smooth,
+            envelope_sharpness: 0.0,
+            envelope_shape: 0.5,
         }
     }
 }
@@ -77,7 +81,7 @@ impl GranularEngine {
     /// Initializes samples from path
     pub fn init(&mut self) {
         let reader = BufReader::new(File::open(&self.path).expect("Unknown file"));
-        let decoder = Decoder::new_wav(reader).expect("Couldn't created decoder for file");
+        let decoder = Decoder::new_wav(reader).expect("Couldn't create decoder for file");
 
         self.sr = decoder.sample_rate();
         self.samples = decoder.convert_samples().map(StereoFrame::new).collect();
@@ -98,7 +102,14 @@ impl GranularEngine {
             if params.density != self.seq.rate {
                 self.seq.rate = params.density;
             }
-            self.params = params;
+            // This prevents the scan restarting every time a parameter changes
+            let start = if let Some(true) = params.scan {
+                self.params.start
+            } else {
+                params.start
+            };
+
+            self.params = GranularParams { start, ..params };
             println!("Granny received her params: \n{:?}", self.params);
         }
         if let Ok(gate) = self.gate_rcvr.try_recv() {
@@ -117,6 +128,8 @@ impl GranularEngine {
             pan,
             (self.grains.len() as u16).max(1),
             self.params.envelope_mode,
+            self.params.envelope_sharpness,
+            self.params.envelope_shape,
         ));
     }
 

@@ -29,18 +29,22 @@ impl GranularUi {
     }
 
     pub fn ui(&mut self, ui: &mut Ui) {
-        ui.heading("Grain Controls");
-        ui.vertical_centered(|ui| {
+        ui.vertical(|ui| {
+            ui.heading("Grain Controls");
             ui.horizontal(|ui| {
                 let start = Slider::new(&mut self.params.start, 0..=(self.buf_len - 1))
                     .drag_value_speed(50.0)
                     .text("Start")
                     .ui(ui);
 
-                let length = Slider::new(&mut self.params.grain_length, 0..=88000)
-                    .drag_value_speed(10.0)
-                    .text("Length")
-                    .ui(ui);
+                // Min length of 25ms at 45khz, max of 8 seconds, or the length of the buffer
+                let length = Slider::new(
+                    &mut self.params.grain_length,
+                    1100..=(44000 * 8).min(self.buf_len - 1),
+                )
+                .drag_value_speed(10.0)
+                .text("Length")
+                .ui(ui);
 
                 if ui.button("Scan").clicked() {
                     let state = self.params.scan.unwrap_or(false);
@@ -61,6 +65,8 @@ impl GranularUi {
 
                 call_on_change(|| self.update_params(), &[start, length]);
             });
+
+            ui.heading("Envelope Controls");
             ui.horizontal(|ui| {
                 let spread = Slider::new(&mut self.params.grain_spread, 500..=self.buf_len)
                     .drag_value_speed(1.0)
@@ -77,13 +83,15 @@ impl GranularUi {
                     .text("Density")
                     .ui(ui);
 
-                if ui.button("Gate").clicked() {
+                call_on_change(|| self.update_params(), &[density, spread, gain])
+            });
+            let msg = if self.gate { "Pause" } else { "Play" };
+            ui.horizontal(|ui| {
+                if ui.button(msg).clicked() {
                     self.gate = !self.gate;
                     self.gate_sender
                         .send(self.gate)
                         .expect("Failed to send gate");
-                    let msg = if self.gate { "on" } else { "off" };
-                    println!("Sending gate {}", msg);
                 }
 
                 ComboBox::from_label("Envelope type")
@@ -101,8 +109,31 @@ impl GranularUi {
                         );
                     });
 
-                call_on_change(|| self.update_params(), &[density, spread, gain])
-            });
+                let mut response_list = vec![];
+
+                match &self.params.envelope_mode {
+                    EnvelopeMode::Smooth => {}
+                    EnvelopeMode::Exp => {
+                        let sharpness_slider =
+                            Slider::new(&mut self.params.envelope_sharpness, 0.0..=1.00)
+                                .drag_value_speed(0.01)
+                                .text("Sharpness")
+                                .ui(ui);
+
+                        let shape_slider =
+                            Slider::new(&mut self.params.envelope_shape, 0.01..=0.99)
+                                .drag_value_speed(0.01)
+                                .text("Shape")
+                                .ui(ui);
+
+                        // When the sliders are present, push the results so changes are listened for
+                        response_list.push(sharpness_slider);
+                        response_list.push(shape_slider);
+                    }
+                }
+
+                call_on_change(|| self.update_params(), &response_list)
+            })
         });
     }
 }
