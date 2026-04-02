@@ -7,17 +7,20 @@ pub struct Grain {
     length: usize,
     start: usize,
     pan: f32,
+    /// The number of grains that were active when spawned
+    scale: u16,
     pub finished: bool,
 }
 
 impl Grain {
-    pub fn new(length: usize, start: usize, pan: f32) -> Self {
+    pub fn new(length: usize, start: usize, pan: f32, scale: u16) -> Self {
         Self {
             t: 0,
             length,
             start,
             pan,
             finished: false,
+            scale,
         }
     }
 
@@ -36,7 +39,7 @@ impl Grain {
         if self.t >= self.length {
             self.finished = true;
         };
-        let windowed = out.scale(window(self.length, self.t));
+        let windowed = out.scale((self.scale as f32).recip() * window(self.length, self.t));
         StereoFrame(
             (1.0 - self.pan) * windowed.0 * 0.5,
             (1.0 + self.pan) * windowed.1 * 0.5,
@@ -52,6 +55,7 @@ impl Default for Grain {
             start: 0,
             pan: 0.0,
             finished: false,
+            scale: 1,
         }
     }
 }

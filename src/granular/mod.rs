@@ -108,8 +108,12 @@ impl GranularEngine {
     }
 
     pub fn spawn_grain_at(&mut self, start: usize, pan: f32) {
-        self.grains
-            .push(Grain::new(self.params.grain_length, start, pan));
+        self.grains.push(Grain::new(
+            self.params.grain_length,
+            start,
+            pan,
+            (self.grains.len() as u16).max(1),
+        ));
     }
 
     // Return one frame of granular audio
@@ -137,11 +141,11 @@ impl GranularEngine {
         }
 
         // Read grains even if gate is not pressed, for smooth decay
+        let grain_count = self.grains.len();
         for grain in &mut self.grains {
-            dry += grain.read(&self.samples);
+            dry += grain.read(&self.samples).scale(self.params.gain * 1.2);
         }
-
-        dry.scale(self.params.gain * 1.2 / self.grains.len().max(1) as f32)
+        dry
     }
 
     pub fn process_block(&mut self, buf: &mut [StereoFrame]) {
