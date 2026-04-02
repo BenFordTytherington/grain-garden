@@ -1,6 +1,12 @@
 use crate::dsp::StereoFrame;
 use std::f32::consts::PI;
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum EnvelopeMode {
+    Smooth,
+    Exp,
+}
+
 #[derive(Debug)]
 pub struct Grain {
     t: usize,
@@ -10,10 +16,17 @@ pub struct Grain {
     /// The number of grains that were active when spawned
     scale: u16,
     pub finished: bool,
+    envelope_mode: EnvelopeMode,
 }
 
 impl Grain {
-    pub fn new(length: usize, start: usize, pan: f32, scale: u16) -> Self {
+    pub fn new(
+        length: usize,
+        start: usize,
+        pan: f32,
+        scale: u16,
+        envelope_mode: EnvelopeMode,
+    ) -> Self {
         Self {
             t: 0,
             length,
@@ -21,7 +34,15 @@ impl Grain {
             pan,
             finished: false,
             scale,
+            envelope_mode,
         }
+    }
+
+    pub fn env(&self) -> f32 {
+        return match self.envelope_mode {
+            EnvelopeMode::Smooth => window(self.length, self.t),
+            EnvelopeMode::Exp => exp(self.t as f32 / self.length as f32, 0.02, 1.0, -0.5),
+        };
     }
 
     pub fn finished() -> Self {
@@ -39,7 +60,8 @@ impl Grain {
         if self.t >= self.length {
             self.finished = true;
         };
-        let windowed = out.scale((self.scale as f32).recip() * window(self.length, self.t));
+        let envelope_val = self.env();
+        let windowed = out.scale((self.scale as f32).recip() * envelope_val);
         StereoFrame(
             (1.0 - self.pan) * windowed.0 * 0.5,
             (1.0 + self.pan) * windowed.1 * 0.5,
@@ -56,6 +78,7 @@ impl Default for Grain {
             pan: 0.0,
             finished: false,
             scale: 1,
+            envelope_mode: EnvelopeMode::Smooth,
         }
     }
 }
@@ -78,13 +101,8 @@ pub fn exp(t: f32, m: f32, c1: f32, c2: f32) -> f32 {
     if (c1.abs() <= 0.01) | (c2.abs() <= 0.01) {
         ad(t, m)
     } else if t <= m {
-        ((-c1 * t).exp() - 1.0) / ((-c1 * m).exp() - 1.0)
+        ((c1 * t / m).exp() - 1.0) / (c1.exp() - 1.0)
     } else {
-        ((c2 * (t - 1.0)).exp() - 1.0) / ((c2 * (m - 1.0)).exp() - 1.0)
+        1.0 - ((-(c2 * (t - m) / (1.0 - m))).exp() - 1.0) / ((-c2).exp() - 1.0)
     }
-}
-
-pub fn env(n: usize, t: usize, m: f32) -> f32 {
-    let t_norm = t as f32 / n as f32;
-    exp(t_norm, m, -5.0, -5.0)
 }

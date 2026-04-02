@@ -2,6 +2,7 @@ pub mod grain;
 pub mod sequencer;
 
 use crate::dsp::StereoFrame;
+use crate::granular::grain::EnvelopeMode;
 use eframe::emath::Pos2;
 use grain::Grain;
 use rodio::{Decoder, Source};
@@ -34,6 +35,7 @@ pub struct GranularParams {
     pub scan: Option<bool>,
     pub file: PathBuf,
     pub density: f32, // How often grains will be spawned, in hz
+    pub envelope_mode: EnvelopeMode,
 }
 
 impl Default for GranularParams {
@@ -46,6 +48,7 @@ impl Default for GranularParams {
             scan: None,
             file: PathBuf::from("assets/audio/handpan_trimmed.wav"),
             density: 1.0,
+            envelope_mode: EnvelopeMode::Smooth,
         }
     }
 }
@@ -113,6 +116,7 @@ impl GranularEngine {
             start,
             pan,
             (self.grains.len() as u16).max(1),
+            self.params.envelope_mode,
         ));
     }
 
@@ -141,7 +145,6 @@ impl GranularEngine {
         }
 
         // Read grains even if gate is not pressed, for smooth decay
-        let grain_count = self.grains.len();
         for grain in &mut self.grains {
             dry += grain.read(&self.samples).scale(self.params.gain * 1.2);
         }

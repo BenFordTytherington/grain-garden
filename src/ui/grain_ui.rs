@@ -1,6 +1,7 @@
+use crate::granular::grain::EnvelopeMode;
 use crate::granular::GranularParams;
 use crate::ui::{call_on_change, send_params};
-use egui::{Slider, Ui, Widget};
+use egui::{ComboBox, Slider, Ui, Widget};
 use std::sync::mpsc::Sender;
 
 #[derive(Debug)]
@@ -84,6 +85,21 @@ impl GranularUi {
                     let msg = if self.gate { "on" } else { "off" };
                     println!("Sending gate {}", msg);
                 }
+
+                ComboBox::from_label("Envelope type")
+                    .selected_text(format!("{:?}", self.params.envelope_mode))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut self.params.envelope_mode,
+                            EnvelopeMode::Smooth,
+                            "Smooth",
+                        );
+                        ui.selectable_value(
+                            &mut self.params.envelope_mode,
+                            EnvelopeMode::Exp,
+                            "Exp",
+                        );
+                    });
 
                 call_on_change(|| self.update_params(), &[density, spread, gain])
             });
